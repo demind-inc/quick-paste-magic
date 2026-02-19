@@ -1,8 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  useTagsQuery,
+  useFoldersQuery,
+  useSnippetQuery,
+  useSaveSnippetMutation,
+  useCreateTagMutation,
+  type Tag,
+  type Folder,
+} from "@/hooks/useSnippetEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,9 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-interface Tag { id: string; name: string; color: string; }
-interface Folder { id: string; name: string; parent_id: string | null; }
 
 function detectVariables(body: string): Array<{ name: string; defaultValue?: string }> {
   const regex = /\{([^}]+)\}/g;
@@ -54,49 +60,26 @@ export default function SnippetEditorPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState("");
-  const [allTags, setAllTags] = useState<Tag[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [shortcutError, setShortcutError] = useState("");
 
+  const { data: allTags = [] } = useTagsQuery(workspace?.id);
+  const { data: folders = [] } = useFoldersQuery(workspace?.id);
+  const { data: snippetData, isLoading: loading } = useSnippetQuery(id, !isNew);
+  const saveMutation = useSaveSnippetMutation();
+  const createTagMutation = useCreateTagMutation(workspace?.id, user?.id);
+
   const variables = detectVariables(body);
 
-  const fetchMeta = useCallback(async () => {
-    if (!workspace) return;
-    const [{ data: tagData }, { data: folderData }] = await Promise.all([
-      supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id),
-      supabase.from("folders").select("id, name, parent_id").eq("workspace_id", workspace.id),
-    ]);
-    if (tagData) setAllTags(tagData as Tag[]);
-    if (folderData) setFolders(folderData as Folder[]);
-  }, [workspace]);
-
-  const fetchSnippet = useCallback(async () => {
-    if (isNew || !workspace) return;
-    setLoading(true);
-    const { data } = await supabase
-      .from("snippets")
-      .select(`*, snippet_tags(tag_id)`)
-      .eq("id", id)
-      .single();
-
-    if (data) {
-      setTitle(data.title);
-      setShortcut(data.shortcut ?? "");
-      setBody(data.body);
-      setSharedScope(data.shared_scope as "private" | "workspace");
-      setFolderId(data.folder_id ?? null);
-      setSelectedTagIds((data.snippet_tags as any[]).map((st) => st.tag_id));
-    }
-    setLoading(false);
-  }, [id, isNew, workspace]);
-
   useEffect(() => {
-    fetchMeta();
-    fetchSnippet();
-  }, [fetchMeta, fetchSnippet]);
+    if (!snippetData) return;
+    setTitle(snippetData.title);
+    setShortcut(snippetData.shortcut ?? "");
+    setBody(snippetData.body);
+    setSharedScope(snippetData.shared_scope as "private" | "workspace");
+    setFolderId(snippetData.folder_id ?? null);
+    setSelectedTagIds((snippetData.snippet_tags ?? []).map((st) => st.tag_id));
+  }, [snippetData]);
 
   const handleSave = async () => {
     if (!workspace || !user) return;
@@ -105,7 +88,6 @@ export default function SnippetEditorPage() {
       return;
     }
 
-    // Validate shortcut uniqueness
     if (shortcut.trim()) {
       const { data: existing } = await supabase
         .from("snippets")
@@ -114,7 +96,6 @@ export default function SnippetEditorPage() {
         .eq("shortcut", shortcut.trim())
         .neq("id", id ?? "00000000-0000-0000-0000-000000000000")
         .limit(1);
-
       if (existing && existing.length > 0) {
         setShortcutError("This shortcut is already in use in your workspace.");
         return;
@@ -122,73 +103,34 @@ export default function SnippetEditorPage() {
     }
     setShortcutError("");
 
-    setSaving(true);
     try {
-      let snippetId = id;
-
-      if (isNew) {
-        const { data, error } = await supabase
-          .from("snippets")
-          .insert({
-            workspace_id: workspace.id,
-            owner_id: user.id,
-            title: title.trim(),
-            shortcut: shortcut.trim() || null,
-            body,
-            shared_scope: sharedScope,
-            folder_id: folderId,
-          })
-          .select("id")
-          .single();
-
-        if (error) throw error;
-        snippetId = data.id;
-      } else {
-        const { error } = await supabase
-          .from("snippets")
-          .update({
-            title: title.trim(),
-            shortcut: shortcut.trim() || null,
-            body,
-            shared_scope: sharedScope,
-            folder_id: folderId,
-          })
-          .eq("id", id!);
-
-        if (error) throw error;
-      }
-
-      // Sync tags
-      await supabase.from("snippet_tags").delete().eq("snippet_id", snippetId!);
-      if (selectedTagIds.length > 0) {
-        await supabase.from("snippet_tags").insert(
-          selectedTagIds.map((tag_id) => ({ snippet_id: snippetId!, tag_id }))
-        );
-      }
-
+      await saveMutation.mutateAsync({
+        id,
+        isNew,
+        workspaceId: workspace.id,
+        ownerId: user.id,
+        title: title.trim(),
+        shortcut: shortcut.trim() || null,
+        body,
+        sharedScope,
+        folderId,
+        selectedTagIds,
+      });
       toast({ title: isNew ? "Snippet created" : "Snippet saved" });
       navigate("/snippets");
     } catch (err: any) {
       toast({ title: "Save failed", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
     }
   };
 
-  const handleCreateTag = async () => {
-    if (!workspace || !user || !newTagName.trim()) return;
-    const colors = ["#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6","#8b5cf6","#ec4899","#14b8a6"];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const { data, error } = await supabase
-      .from("tags")
-      .insert({ workspace_id: workspace.id, name: newTagName.trim(), color, created_by: user.id })
-      .select()
-      .single();
-    if (!error && data) {
-      setAllTags((prev) => [...prev, data as Tag]);
-      setSelectedTagIds((prev) => [...prev, data.id]);
-      setNewTagName("");
-    }
+  const handleCreateTag = () => {
+    if (!newTagName.trim()) return;
+    createTagMutation.mutate(newTagName, {
+      onSuccess: (tag) => {
+        setSelectedTagIds((prev) => [...prev, tag.id]);
+        setNewTagName("");
+      },
+    });
   };
 
   const toggleTag = (tagId: string) => {
@@ -375,10 +317,10 @@ export default function SnippetEditorPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2">
-          <Button onClick={handleSave} disabled={saving} className="min-w-24">
-            {saving ? "Saving…" : "Save"}
+          <Button onClick={handleSave} disabled={saveMutation.isPending} className="min-w-24">
+            {saveMutation.isPending ? "Saving…" : "Save"}
           </Button>
-          <Button variant="ghost" onClick={() => navigate("/snippets")} disabled={saving}>
+          <Button variant="ghost" onClick={() => navigate("/snippets")} disabled={saveMutation.isPending}>
             Cancel
           </Button>
         </div>

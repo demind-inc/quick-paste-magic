@@ -1,12 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import {
+  useSnippetsQuery,
+  useTagsQuery,
+  useSnippetDeleteMutation,
+  useSnippetDuplicateMutation,
+  type SnippetTag,
+} from "@/hooks/useSnippets";
 import {
   Plus, Search, Copy, Pencil, Trash2, Globe, Lock,
   ArrowUpDown, Clock, Hash, BarChart2, Folder,
@@ -28,12 +34,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-interface Tag {
-  id: string;
-  name: string;
-  color: string;
-}
-
 interface Snippet {
   id: string;
   title: string;
@@ -46,7 +46,7 @@ interface Snippet {
   updated_at: string;
   owner_id: string;
   folder_id: string | null;
-  tags?: Tag[];
+  tags?: SnippetTag[];
 }
 
 type SortKey = "updated_at" | "use_count" | "title";
@@ -56,55 +56,19 @@ export default function SnippetsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [sortKey, setSortKey] = useState<SortKey>("updated_at");
 
-  const [snippets, setSnippets] = useState<Snippet[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<"all" | "private" | "workspace">("all");
-  const [sortKey, setSortKey] = useState<SortKey>("updated_at");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    if (!workspace) return;
-    setLoading(true);
+  const { data: snippets = [], isLoading: loading } = useSnippetsQuery(workspace?.id, sortKey);
+  const { data: tags = [] } = useTagsQuery(workspace?.id);
+  const deleteMutation = useSnippetDeleteMutation(workspace?.id, sortKey);
+  const duplicateMutation = useSnippetDuplicateMutation(workspace?.id, sortKey, user?.id);
 
-    const [{ data: snippetData }, { data: tagData }] = await Promise.all([
-      supabase
-        .from("snippets")
-        .select(`
-          id, title, shortcut, body, shared_scope, use_count,
-          last_used_at, created_at, updated_at, owner_id, folder_id,
-          snippet_tags(tag_id, tags(id, name, color))
-        `)
-        .eq("workspace_id", workspace.id)
-        .order(sortKey, { ascending: sortKey === "title" }),
-      supabase
-        .from("tags")
-        .select("id, name, color")
-        .eq("workspace_id", workspace.id),
-    ]);
-
-    if (snippetData) {
-      const normalized = snippetData.map((s: any) => ({
-        ...s,
-        tags: (s.snippet_tags ?? [])
-          .map((st: any) => st.tags)
-          .filter(Boolean),
-      }));
-      setSnippets(normalized as Snippet[]);
-    }
-
-    if (tagData) setTags(tagData as Tag[]);
-    setLoading(false);
-  }, [workspace, sortKey]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const filtered = snippets.filter((s) => {
+  const filtered = (snippets as Snippet[]).filter((s) => {
     if (scopeFilter !== "all" && s.shared_scope !== scopeFilter) return false;
     if (selectedTag && !s.tags?.some((t) => t.id === selectedTag)) return false;
     if (search) {
@@ -120,32 +84,34 @@ export default function SnippetsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    const { error } = await supabase.from("snippets").delete().eq("id", deleteId);
-    if (error) {
-      toast({ title: "Failed to delete snippet", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await deleteMutation.mutateAsync(deleteId);
       toast({ title: "Snippet deleted" });
-      setSnippets((prev) => prev.filter((s) => s.id !== deleteId));
+    } catch (err) {
+      toast({
+        title: "Failed to delete snippet",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
     }
     setDeleteId(null);
   };
 
   const handleDuplicate = async (snippet: Snippet) => {
     if (!workspace || !user) return;
-    const { error } = await supabase.from("snippets").insert({
-      workspace_id: workspace.id,
-      owner_id: user.id,
-      title: snippet.title + " (copy)",
-      shortcut: null,
-      body: snippet.body,
-      shared_scope: "private",
-      folder_id: snippet.folder_id,
-    });
-    if (error) {
-      toast({ title: "Failed to duplicate", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await duplicateMutation.mutateAsync({
+        title: snippet.title,
+        body: snippet.body,
+        folder_id: snippet.folder_id,
+      });
       toast({ title: "Snippet duplicated" });
-      fetchData();
+    } catch (err) {
+      toast({
+        title: "Failed to duplicate",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
     }
   };
 

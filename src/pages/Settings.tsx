@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useProfileQuery, useUpdateProfileMutation, useUpdateWorkspaceMutation } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,58 +10,40 @@ import { Separator } from "@/components/ui/separator";
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const { workspace, refetch } = useWorkspace();
+  const { workspace } = useWorkspace();
   const { toast } = useToast();
 
+  const { data: profileFullName } = useProfileQuery(user?.id);
   const [fullName, setFullName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [savingWorkspace, setSavingWorkspace] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) setFullName(data.full_name ?? "");
-      });
-  }, [user]);
-
+    if (profileFullName !== undefined) setFullName(profileFullName ?? "");
+  }, [profileFullName]);
   useEffect(() => {
     if (workspace) setWorkspaceName(workspace.name);
   }, [workspace]);
 
+  const updateProfile = useUpdateProfileMutation(user?.id);
+  const updateWorkspace = useUpdateWorkspaceMutation(user?.id);
+
   const saveProfile = async () => {
     if (!user) return;
-    setSavingProfile(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: fullName.trim() })
-      .eq("id", user.id);
-    setSavingProfile(false);
-    if (error) {
-      toast({ title: "Failed to save profile", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await updateProfile.mutateAsync(fullName);
       toast({ title: "Profile updated" });
+    } catch (err: any) {
+      toast({ title: "Failed to save profile", description: err.message, variant: "destructive" });
     }
   };
 
   const saveWorkspace = async () => {
     if (!workspace) return;
-    setSavingWorkspace(true);
-    const { error } = await supabase
-      .from("workspaces")
-      .update({ name: workspaceName.trim() })
-      .eq("id", workspace.id);
-    setSavingWorkspace(false);
-    if (error) {
-      toast({ title: "Failed to update workspace", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await updateWorkspace.mutateAsync({ workspaceId: workspace.id, name: workspaceName });
       toast({ title: "Workspace updated" });
-      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to update workspace", description: err.message, variant: "destructive" });
     }
   };
 
@@ -85,8 +67,8 @@ export default function SettingsPage() {
             <Label>Email</Label>
             <Input value={user?.email ?? ""} disabled className="text-muted-foreground" />
           </div>
-          <Button size="sm" onClick={saveProfile} disabled={savingProfile}>
-            {savingProfile ? "Saving…" : "Save profile"}
+          <Button size="sm" onClick={saveProfile} disabled={updateProfile.isPending}>
+            {updateProfile.isPending ? "Saving…" : "Save profile"}
           </Button>
         </div>
       </section>
@@ -105,8 +87,8 @@ export default function SettingsPage() {
               placeholder="My Workspace"
             />
           </div>
-          <Button size="sm" onClick={saveWorkspace} disabled={savingWorkspace}>
-            {savingWorkspace ? "Saving…" : "Save workspace"}
+          <Button size="sm" onClick={saveWorkspace} disabled={updateWorkspace.isPending}>
+            {updateWorkspace.isPending ? "Saving…" : "Save workspace"}
           </Button>
         </div>
       </section>

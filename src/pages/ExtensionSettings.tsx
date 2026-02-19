@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useRegenerateApiKeyMutation, useUpdateDomainDenylistMutation } from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { Copy, Check, RefreshCw, Eye, EyeOff } from "lucide-react";
 
 export default function ExtensionSettingsPage() {
-  const { workspace, myRole, refetch } = useWorkspace();
+  const { workspace, myRole } = useWorkspace();
+  const { user } = useAuth();
   const { toast } = useToast();
 
   const [copied, setCopied] = useState(false);
@@ -17,8 +19,15 @@ export default function ExtensionSettingsPage() {
   const [denylistInput, setDenylistInput] = useState(
     workspace?.domain_denylist?.join(", ") ?? ""
   );
-  const [savingDenylist, setSavingDenylist] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+
+  useEffect(() => {
+    if (workspace?.domain_denylist) {
+      setDenylistInput(workspace.domain_denylist.join(", "));
+    }
+  }, [workspace?.domain_denylist]);
+
+  const regenerateMutation = useRegenerateApiKeyMutation(user?.id);
+  const denylistMutation = useUpdateDomainDenylistMutation(user?.id);
 
   const isOwner = myRole === "owner";
 
@@ -31,43 +40,25 @@ export default function ExtensionSettingsPage() {
 
   const regenerateKey = async () => {
     if (!workspace) return;
-    setRegenerating(true);
-    // Generate a new hex key client-side (server-side is preferable in prod)
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    const newKey = Array.from(array).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-    const { error } = await supabase
-      .from("workspaces")
-      .update({ api_key: newKey })
-      .eq("id", workspace.id);
-    setRegenerating(false);
-    if (error) {
-      toast({ title: "Failed to regenerate key", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await regenerateMutation.mutateAsync(workspace.id);
       toast({ title: "API key regenerated" });
-      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
     }
   };
 
   const saveDenylist = async () => {
     if (!workspace) return;
-    setSavingDenylist(true);
     const parsed = denylistInput
       .split(",")
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean);
-
-    const { error } = await supabase
-      .from("workspaces")
-      .update({ domain_denylist: parsed })
-      .eq("id", workspace.id);
-    setSavingDenylist(false);
-    if (error) {
-      toast({ title: "Failed to save", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await denylistMutation.mutateAsync({ workspaceId: workspace.id, domainDenylist: parsed });
       toast({ title: "Domain denylist saved" });
-      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
     }
   };
 
@@ -109,10 +100,10 @@ export default function ExtensionSettingsPage() {
             size="sm"
             className="mt-3 gap-1.5 text-muted-foreground hover:text-foreground"
             onClick={regenerateKey}
-            disabled={regenerating}
+            disabled={regenerateMutation.isPending}
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            {regenerating ? "Regenerating…" : "Regenerate key"}
+            {regenerateMutation.isPending ? "Regenerating…" : "Regenerate key"}
           </Button>
         )}
         <p className="text-xs text-muted-foreground mt-2">
@@ -139,8 +130,8 @@ export default function ExtensionSettingsPage() {
             />
           </div>
           {isOwner && (
-            <Button size="sm" onClick={saveDenylist} disabled={savingDenylist}>
-              {savingDenylist ? "Saving…" : "Save denylist"}
+            <Button size="sm" onClick={saveDenylist} disabled={denylistMutation.isPending}>
+              {denylistMutation.isPending ? "Saving…" : "Save denylist"}
             </Button>
           )}
         </div>
