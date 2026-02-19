@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./AuthContext";
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface Workspace {
   id: string;
@@ -41,77 +43,72 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
   refetch: () => {},
 });
 
+async function fetchWorkspace(userId: string) {
+  const { data: memberData } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, role")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!memberData) {
+    return { workspace: null, members: [], myRole: null };
+  }
+
+  const myRole = memberData.role as "owner" | "editor" | "viewer";
+
+  const { data: wsData } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("id", memberData.workspace_id)
+    .maybeSingle();
+
+  const workspace = wsData as Workspace | null;
+
+  const { data: membersData } = await supabase
+    .from("workspace_members")
+    .select(`
+      id, workspace_id, user_id, role, joined_at,
+      profiles:profiles(full_name, email, avatar_url)
+    `)
+    .eq("workspace_id", memberData.workspace_id);
+
+  const members =
+    membersData?.map((m: any) => ({
+      ...m,
+      profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles,
+    })) ?? [];
+
+  return {
+    workspace,
+    members: members as WorkspaceMember[],
+    myRole,
+  };
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [myRole, setMyRole] = useState<"owner" | "editor" | "viewer" | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const fetchWorkspace = async () => {
-    if (!user) {
-      setWorkspace(null);
-      setMembers([]);
-      setMyRole(null);
-      setLoading(false);
-      return;
-    }
+  const {
+    data,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.workspace(user?.id),
+    queryFn: () => fetchWorkspace(user!.id),
+    enabled: !!user?.id,
+  });
 
-    setLoading(true);
-    try {
-      // Get first workspace where user is a member
-      const { data: memberData } = await supabase
-        .from("workspace_members")
-        .select("workspace_id, role")
-        .eq("user_id", user.id)
-        .limit(1)
-        .single();
-
-      if (!memberData) {
-        setLoading(false);
-        return;
-      }
-
-      setMyRole(memberData.role as "owner" | "editor" | "viewer");
-
-      const { data: wsData } = await supabase
-        .from("workspaces")
-        .select("*")
-        .eq("id", memberData.workspace_id)
-        .single();
-
-      if (wsData) setWorkspace(wsData as Workspace);
-
-      // Fetch members with profiles
-      const { data: membersData } = await supabase
-        .from("workspace_members")
-        .select(`
-          id, workspace_id, user_id, role, joined_at,
-          profiles:profiles(full_name, email, avatar_url)
-        `)
-        .eq("workspace_id", memberData.workspace_id);
-
-      if (membersData) {
-        setMembers(
-          membersData.map((m: any) => ({
-            ...m,
-            profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles,
-          })) as WorkspaceMember[]
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
+  const value: WorkspaceContextType = {
+    workspace: data?.workspace ?? null,
+    members: data?.members ?? [],
+    myRole: data?.myRole ?? null,
+    loading: isLoading,
+    refetch,
   };
 
-  useEffect(() => {
-    fetchWorkspace();
-  }, [user]);
-
   return (
-    <WorkspaceContext.Provider
-      value={{ workspace, members, myRole, loading, refetch: fetchWorkspace }}
-    >
+    <WorkspaceContext.Provider value={value}>
       {children}
     </WorkspaceContext.Provider>
   );

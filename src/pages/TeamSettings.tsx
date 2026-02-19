@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import {
+  useInviteMemberMutation,
+  useRemoveMemberMutation,
+  useUpdateMemberRoleMutation,
+} from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,32 +36,33 @@ const roleBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
 
 export default function TeamSettingsPage() {
   const { user } = useAuth();
-  const { workspace, members, myRole, refetch } = useWorkspace();
+  const { workspace, members, myRole } = useWorkspace();
   const { toast } = useToast();
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
-  const [inviting, setInviting] = useState(false);
+
+  const inviteMutation = useInviteMemberMutation();
+  const removeMutation = useRemoveMemberMutation(user?.id);
+  const roleMutation = useUpdateMemberRoleMutation(user?.id);
 
   const handleInvite = async () => {
     if (!workspace || !user || !inviteEmail.trim()) return;
-    setInviting(true);
-    const { error } = await supabase.from("workspace_invitations").insert({
-      workspace_id: workspace.id,
-      email: inviteEmail.trim().toLowerCase(),
-      role: inviteRole,
-      invited_by: user.id,
-    });
-    setInviting(false);
-    if (error) {
-      toast({
-        title: "Failed to send invitation",
-        description: error.message,
-        variant: "destructive",
+    try {
+      await inviteMutation.mutateAsync({
+        workspaceId: workspace.id,
+        email: inviteEmail,
+        role: inviteRole,
+        invitedBy: user.id,
       });
-    } else {
       toast({ title: "Invitation sent", description: `Invited ${inviteEmail}` });
       setInviteEmail("");
+    } catch (err: any) {
+      toast({
+        title: "Failed to send invitation",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -66,28 +71,20 @@ export default function TeamSettingsPage() {
       toast({ title: "Cannot remove workspace owner", variant: "destructive" });
       return;
     }
-    const { error } = await supabase
-      .from("workspace_members")
-      .delete()
-      .eq("id", memberId);
-    if (error) {
-      toast({ title: "Failed to remove member", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await removeMutation.mutateAsync(memberId);
       toast({ title: "Member removed" });
-      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to remove member", description: err.message, variant: "destructive" });
     }
   };
 
   const handleRoleChange = async (memberId: string, role: "editor" | "viewer" | "owner") => {
-    const { error } = await supabase
-      .from("workspace_members")
-      .update({ role })
-      .eq("id", memberId);
-    if (error) {
-      toast({ title: "Failed to update role", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await roleMutation.mutateAsync({ memberId, role });
       toast({ title: "Role updated" });
-      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
     }
   };
 
@@ -185,9 +182,9 @@ export default function TeamSettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button size="sm" onClick={handleInvite} disabled={inviting || !inviteEmail.trim()}>
+              <Button size="sm" onClick={handleInvite} disabled={inviteMutation.isPending || !inviteEmail.trim()}>
                 <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                {inviting ? "Inviting…" : "Send invitation"}
+                {inviteMutation.isPending ? "Inviting…" : "Send invitation"}
               </Button>
             </div>
           </section>
