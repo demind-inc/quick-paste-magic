@@ -8,20 +8,18 @@ export function useInviteMemberMutation() {
       workspaceId,
       email,
       role,
-      invitedBy,
     }: {
       workspaceId: string;
       email: string;
       role: "editor" | "viewer";
       invitedBy: string;
     }) => {
-      const { error } = await supabase.from("workspace_invitations").insert({
-        workspace_id: workspaceId,
-        email: email.trim().toLowerCase(),
-        role,
-        invited_by: invitedBy,
+      const { data, error } = await supabase.functions.invoke("invite-workspace-member", {
+        body: { workspaceId, email: email.trim(), role },
       });
       if (error) throw error;
+      const err = (data as { error?: string })?.error;
+      if (err) throw new Error(err);
     },
   });
 }
