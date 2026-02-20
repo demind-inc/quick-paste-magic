@@ -61,6 +61,7 @@ async function getApiKey(): Promise<string | null> {
 async function clearStoredAuth(): Promise<void> {
   await storage.remove("session");
   await storage.remove("apiKey");
+  await storage.remove("domainAllowlist");
 }
 
 // ─── Snippet sync ────────────────────────────────────────────────────────────

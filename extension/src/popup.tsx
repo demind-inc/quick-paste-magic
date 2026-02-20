@@ -33,6 +33,7 @@ async function setStoredAuth(
 async function clearStoredAuth(): Promise<void> {
   await storage.remove("session");
   await storage.remove("apiKey");
+  await storage.remove("domainAllowlist");
 }
 
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
@@ -287,6 +288,29 @@ function MainView({
           <span>SnipDM</span>
         </div>
         <div className="header-actions">
+          <a
+            href={`${WEB_DASHBOARD_URL}/settings/extension`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="icon-link"
+            title="Extension settings"
+            aria-label="Open extension settings"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1A1.7 1.7 0 0 0 9 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1A1.7 1.7 0 0 0 20.9 11H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            </svg>
+          </a>
           <a
             href={WEB_DASHBOARD_URL}
             target="_blank"

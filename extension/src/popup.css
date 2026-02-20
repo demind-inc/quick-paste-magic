@@ -78,6 +78,23 @@ body {
   align-items: center;
   gap: 8px;
 }
+.icon-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #64748b;
+  text-decoration: none;
+  cursor: pointer;
+}
+.icon-link:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #e2e8f0;
+}
 .btn-add-snippet {
   font-size: 12px;
   font-weight: 500;
