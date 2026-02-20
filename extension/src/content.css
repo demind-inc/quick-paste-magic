@@ -1,0 +1,8 @@
+/* SnipDM content script overlay styles */
+#snipdm-overlay {
+  display: none;
+}
+
+#snipdm-overlay .snipdm-item:last-child {
+  border-bottom: none !important;
+}
