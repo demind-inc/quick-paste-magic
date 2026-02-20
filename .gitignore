@@ -29,3 +29,6 @@ dist-ssr
 # Plasmo / Parcel cache (LevelDB)
 **/data.mdb
 **/lock.mdb
+
+# Plasmo build output
+**/.plasmo
