@@ -13,9 +13,7 @@ const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
-let supabase:
-  | ReturnType<typeof createClient>
-  | null = null;
+let supabase: ReturnType<typeof createClient> | null = null;
 let warnedInvalidSupabaseConfig = false;
 
 const isValidSupabaseUrl = (url: string) => {
@@ -29,7 +27,11 @@ const isValidSupabaseUrl = (url: string) => {
 
 const getSupabaseClient = () => {
   if (!supabase) {
-    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !isValidSupabaseUrl(SUPABASE_URL)) {
+    if (
+      !SUPABASE_URL ||
+      !SUPABASE_PUBLISHABLE_KEY ||
+      !isValidSupabaseUrl(SUPABASE_URL)
+    ) {
       if (!warnedInvalidSupabaseConfig) {
         warnedInvalidSupabaseConfig = true;
       }
@@ -56,6 +58,11 @@ async function getApiKey(): Promise<string | null> {
   return apiKey ?? null;
 }
 
+async function clearStoredAuth(): Promise<void> {
+  await storage.remove("session");
+  await storage.remove("apiKey");
+}
+
 // ─── Snippet sync ────────────────────────────────────────────────────────────
 
 async function syncSnippets() {
@@ -69,11 +76,20 @@ async function syncSnippets() {
     const { error: sessionError } = await client.auth.setSession(
       session as { access_token: string; refresh_token: string }
     );
-    if (sessionError) throw sessionError;
+
+    if (sessionError) {
+      if (sessionError.status === 400) {
+        await clearStoredAuth();
+        return { sessionInvalid: true };
+      }
+      throw sessionError;
+    }
 
     const { data: snippets, error } = await client
       .from("snippets")
-      .select("id,title,shortcut,body,shared_scope,snippet_tags(tag_name,tag_color)");
+      .select(
+        "id,title,shortcut,body,shared_scope,snippet_tags(tag_name,tag_color)"
+      );
 
     if (error) throw error;
 
@@ -101,13 +117,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "SYNC_NOW") {
     syncSnippets()
-      .then(() => sendResponse({ ok: true }))
+      .then((result) => {
+        if (result && "sessionInvalid" in result && result.sessionInvalid) {
+          sendResponse({ ok: false, sessionInvalid: true });
+        } else {
+          sendResponse({ ok: true });
+        }
+      })
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message.type === "SET_SESSION") {
-    void syncSnippets().then(() => sendResponse({ ok: true }));
+    syncSnippets()
+      .then((result) => {
+        if (result && "sessionInvalid" in result && result.sessionInvalid) {
+          sendResponse({ ok: false, sessionInvalid: true });
+        } else {
+          sendResponse({ ok: true });
+        }
+      })
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
 

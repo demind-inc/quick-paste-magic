@@ -389,7 +389,14 @@ export default function Popup() {
   useEffect(() => {
     if (!session || !apiKey) return;
     const run = async () => {
-      await sendMessage("SYNC_NOW");
+      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SYNC_NOW");
+      if (res?.sessionInvalid) {
+        await clearStoredAuth();
+        setSession(null);
+        setApiKey(null);
+        setSnippets([]);
+        return;
+      }
       await loadSnippets();
     };
     void run();
@@ -423,7 +430,13 @@ export default function Popup() {
     await setStoredAuth(sessionData, key);
     setSession(sessionData);
     setApiKey(key);
-    await sendMessage("SET_SESSION");
+    const setRes = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SET_SESSION");
+    if (setRes?.sessionInvalid) {
+      await clearStoredAuth();
+      setSession(null);
+      setApiKey(null);
+      throw new Error("Session invalid. Please sign in again.");
+    }
   };
 
   const handleLogout = async () => {
@@ -435,7 +448,15 @@ export default function Popup() {
 
   const handleSync = async () => {
     try {
-      const res = await sendMessage<{ ok?: boolean }>("SYNC_NOW");
+      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SYNC_NOW");
+      if (res?.sessionInvalid) {
+        await clearStoredAuth();
+        setSession(null);
+        setApiKey(null);
+        setSnippets([]);
+        show("Session expired — signed out");
+        return;
+      }
       await loadSnippets();
       show(
         res?.ok !== false ? "Snippets updated" : "Sync failed — showing cached"

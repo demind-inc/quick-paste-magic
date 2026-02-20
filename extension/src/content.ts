@@ -21,6 +21,8 @@ let typedBuffer = "";
 let pickerOpen = false;
 let isSignedIn = false;
 let suppressBlurClose = false;
+/** Current search filter text inside the overlay (when open). */
+let overlaySearchFilter = "";
 
 // ─── Fetch snippets from background ──────────────────────────────────────────
 
@@ -79,8 +81,9 @@ function createOverlay() {
   `;
   el.addEventListener("mousedown", (e) => {
     suppressBlurClose = true;
-    // Prevent input losing focus when clicking overlay
-    e.preventDefault();
+    const t = e.target as HTMLElement;
+    const isInput = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
+    if (!isInput) e.preventDefault();
   });
   el.addEventListener("mouseup", () => {
     suppressBlurClose = false;
@@ -153,27 +156,34 @@ function positionOverlay(el: HTMLDivElement) {
   el.style.left = `${Math.min(left, window.innerWidth - 390)}px`;
 }
 
-async function renderOverlay(query: string) {
-  if (!isSignedIn) return;
-  await loadSnippets();
-  if (!overlay) overlay = createOverlay();
-
-  const matched = snippets
+/** Filter snippets by overlaySearchFilter (shortcut or title, case-insensitive). */
+function getFilteredSnippets(): any[] {
+  const q = overlaySearchFilter.trim().toLowerCase();
+  if (!q) {
+    return snippets.slice(0, 20);
+  }
+  return snippets
     .filter(
       (s) =>
-        s.shortcut?.toLowerCase().startsWith("/" + query.toLowerCase()) ||
-        s.title?.toLowerCase().includes(query.toLowerCase())
+        s.shortcut?.toLowerCase().includes(q) ||
+        s.title?.toLowerCase().includes(q)
     )
-    .slice(0, 8);
+    .slice(0, 20);
+}
 
-  if (matched.length === 0) {
-    closeOverlay();
-    return;
-  }
+/** Update only the list area so the search input is never destroyed (keeps focus). */
+function updateOverlayList() {
+  if (!overlay) return;
+  const matched = getFilteredSnippets();
+  const listContainer = overlay.querySelector<HTMLDivElement>(".snipdm-list");
+  if (!listContainer) return;
 
-  overlay.innerHTML = matched
-    .map(
-      (s, i) => `
+  const listHtml =
+    matched.length === 0
+      ? `<div class="snipdm-empty" style="padding:16px 12px;color:#64748b;font-size:13px;text-align:center">No snippets match</div>`
+      : matched
+          .map(
+            (s, i) => `
         <div
           data-index="${i}"
           data-id="${s.id}"
@@ -193,12 +203,14 @@ async function renderOverlay(query: string) {
               : ""
           }
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a;font-weight:500">${
-            s.title
+            s.title ?? ""
           }</span>
         </div>
       `
-    )
-    .join("");
+          )
+          .join("");
+
+  listContainer.innerHTML = listHtml;
 
   const items = overlay.querySelectorAll<HTMLDivElement>(".snipdm-item");
   items.forEach((item, i) => {
@@ -206,7 +218,70 @@ async function renderOverlay(query: string) {
     item.addEventListener("click", () => selectSnippet(matched[i]));
   });
   if (items[0]) items[0].style.background = "#f8fafc";
+}
 
+function buildOverlayContent() {
+  if (!overlay) return;
+  const matched = getFilteredSnippets();
+
+  const searchHtml = `
+    <div class="snipdm-search-wrap" style="padding:8px 12px;border-bottom:1px solid #e2e8f0;position:sticky;top:0;background:#fff;border-radius:8px 8px 0 0">
+      <input
+        type="text"
+        class="snipdm-search-input"
+        placeholder="Search snippets..."
+        value="${(overlaySearchFilter ?? "").replace(/"/g, "&quot;")}"
+        autocomplete="off"
+        style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:13px;box-sizing:border-box;outline:none"
+      />
+    </div>
+    <div class="snipdm-list"></div>
+  `;
+
+  overlay.innerHTML = searchHtml;
+
+  const searchInput = overlay.querySelector<HTMLInputElement>(".snipdm-search-input");
+  if (searchInput) {
+    searchInput.focus();
+    searchInput.addEventListener("input", () => {
+      overlaySearchFilter = searchInput.value;
+      updateOverlayList();
+    });
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (overlaySearchFilter) {
+          overlaySearchFilter = "";
+          searchInput.value = "";
+          updateOverlayList();
+        } else {
+          closeOverlay();
+        }
+        e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const items = overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? [];
+        if (items.length > 0) setHighlight(0);
+      }
+    });
+  }
+
+  updateOverlayList();
+}
+
+async function renderOverlay(query: string) {
+  if (!isSignedIn) return;
+  await loadSnippets();
+  if (!overlay) overlay = createOverlay();
+
+  overlaySearchFilter = query;
+  const matched = getFilteredSnippets();
+
+  if (matched.length === 0 && overlaySearchFilter.trim() !== "") {
+    closeOverlay();
+    return;
+  }
+
+  buildOverlayContent();
   positionOverlay(overlay);
   overlay.style.display = "block";
   pickerOpen = true;
@@ -370,6 +445,13 @@ document.addEventListener(
   "keydown",
   (e) => {
     if (!pickerOpen) return;
+    const target = e.target as HTMLElement;
+    const inSearchInput =
+      overlay?.contains(target) && target.classList?.contains("snipdm-search-input");
+    if (inSearchInput && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      return;
+    }
+    if (inSearchInput && e.key === "Escape") return;
 
     const items =
       overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? [];
@@ -402,6 +484,7 @@ document.addEventListener(
   "input",
   (e) => {
     const field = e.target as HTMLElement;
+    if (overlay?.contains(field)) return;
     const isEditable =
       field.tagName === "INPUT" ||
       field.tagName === "TEXTAREA" ||
@@ -443,6 +526,7 @@ document.addEventListener(
 
 document.addEventListener("focusin", (e) => {
   const field = e.target as HTMLElement;
+  if (overlay?.contains(field)) return;
   if (
     field.tagName === "INPUT" ||
     field.tagName === "TEXTAREA" ||
@@ -468,6 +552,7 @@ window.addEventListener("resize", () => {
 document.addEventListener("focusout", () => {
   setTimeout(() => {
     if (suppressBlurClose) return;
+    if (overlay && document.activeElement && overlay.contains(document.activeElement)) return;
     closeOverlay();
     hideActionButton();
   }, 150);
