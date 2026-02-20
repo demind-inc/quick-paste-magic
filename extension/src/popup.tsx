@@ -138,17 +138,33 @@ function FillModal({
   vars,
   onCancel,
   onInsert,
+  onCopy,
 }: {
   snippet: Snippet;
   vars: Placeholder[];
   onCancel: () => void;
   onInsert: (resolved: string) => void;
+  onCopy: (resolved: string) => void;
 }) {
-  const valuesRef = useRef<Record<string, string>>({});
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const getResolved = () => {
+    const values: Record<string, string> = {};
+    modalRef.current
+      ?.querySelectorAll<HTMLInputElement>("input[data-var]")
+      ?.forEach((input) => {
+        const name = input.dataset.var ?? "";
+        if (name) values[name] = input.value;
+      });
+    return resolveBody(snippet.body ?? "", values);
+  };
+
+  const handleInsert = () => onInsert(getResolved());
+  const handleCopy = () => onCopy(getResolved());
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div className="modal" ref={modalRef}>
         <h3>{snippet.title}</h3>
         <p className="modal-sub">Fill in placeholder values:</p>
         {vars.map((v) => (
@@ -159,9 +175,6 @@ function FillModal({
             <input
               data-var={v.name}
               placeholder={v.defaultValue ?? v.name}
-              onChange={(e) => {
-                valuesRef.current[v.name] = e.target.value;
-              }}
             />
           </div>
         ))}
@@ -169,12 +182,10 @@ function FillModal({
           <button id="modal-cancel" onClick={onCancel}>
             Cancel
           </button>
-          <button
-            id="modal-insert"
-            onClick={() =>
-              onInsert(resolveBody(snippet.body ?? "", valuesRef.current))
-            }
-          >
+          <button id="modal-copy" onClick={handleCopy}>
+            Copy
+          </button>
+          <button id="modal-insert" onClick={handleInsert}>
             Insert
           </button>
         </div>
@@ -579,7 +590,25 @@ export default function Popup() {
     }
 
     try {
-      await chrome.scripting.executeScript({
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: "INSERT_TEXT",
+        text,
+      });
+      if (response?.ok) {
+        try {
+          await chrome.tabs.update(tab.id, { active: true });
+        } catch {
+          // ignore
+        }
+        window.close();
+        return;
+      }
+    } catch {
+      // Content script may not be loaded or INSERT_TEXT not handled
+    }
+
+    try {
+      const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: (textToInsert: string) => {
           const el = document.activeElement as
@@ -618,11 +647,22 @@ export default function Popup() {
         },
         args: [text],
       });
-      window.close();
+      const inserted = results?.[0]?.result === true;
+      if (inserted) {
+        window.close();
+        return;
+      }
     } catch {
-      await navigator.clipboard.writeText(text);
-      show("Copied! (insertion blocked)");
+      // executeScript failed (e.g. restricted page)
     }
+
+    await navigator.clipboard.writeText(text);
+    try {
+      await chrome.tabs.update(tab.id, { active: true });
+    } catch {
+      // ignore
+    }
+    show("Copied! Paste with Cmd+V (or Ctrl+V)");
   };
 
   if (loading) {
@@ -656,7 +696,11 @@ export default function Popup() {
           onCancel={() => setModalData(null)}
           onInsert={(resolved) => {
             setModalData(null);
-            void doInsert(resolved, modalData.mode);
+            void doInsert(resolved, "insert");
+          }}
+          onCopy={(resolved) => {
+            setModalData(null);
+            void doInsert(resolved, "copy");
           }}
         />
       ) : null}
