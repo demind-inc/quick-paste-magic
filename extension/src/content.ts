@@ -25,6 +25,16 @@ let suppressBlurClose = false;
 let overlaySearchFilter = "";
 let domainAllowlist: string[] = [];
 
+/** When set, insert this text when the tab window gets focus (popup closed). */
+let pendingInsertOnWindowFocus: string | null = null;
+/** When set, insert this text when the user next focuses an input (no field was focused when popup sent insert). */
+let pendingInsertOnNextFocus: string | null = null;
+
+/** Fill-modal root element (placeholder form in page). Focus inside it must not update activeField. */
+let fillModalElement: HTMLElement | null = null;
+/** When the fill modal is open, this is the field we will insert into (the one that had focus before opening the modal). */
+let insertTargetField: HTMLElement | null = null;
+
 // ─── Fetch snippets from background ──────────────────────────────────────────
 
 async function loadSnippets() {
@@ -377,14 +387,20 @@ function resolveBody(body: string, values: Record<string, string>) {
   });
 }
 
-function openFillModal(snippet: any, onInsert: (resolved: string) => void) {
+function openFillModal(
+  snippet: any,
+  onInsert: (resolved: string, targetField: HTMLElement | null) => void
+) {
   const vars = detectVariables(snippet.body);
   if (vars.length === 0) {
-    onInsert(snippet.body);
+    onInsert(snippet.body, activeField);
     return;
   }
 
+  // Remember the field to insert into (the one that had focus before opening this modal).
+  insertTargetField = activeField && document.contains(activeField) ? activeField : null;
   const modal = document.createElement("div");
+  fillModalElement = modal;
   modal.style.cssText = `
     position: fixed; inset: 0; z-index: 2147483648;
     background: rgba(0,0,0,.4);
@@ -424,32 +440,66 @@ function openFillModal(snippet: any, onInsert: (resolved: string) => void) {
   document.body.appendChild(modal);
   modal.querySelector("input")?.focus();
 
+  const clearModalRefs = () => {
+    fillModalElement = null;
+    insertTargetField = null;
+  };
+
   modal
     .querySelector("#snipdm-cancel")
-    ?.addEventListener("click", () => modal.remove());
+    ?.addEventListener("click", () => {
+      clearModalRefs();
+      modal.remove();
+    });
   modal.querySelector("#snipdm-insert")?.addEventListener("click", () => {
+    const target = insertTargetField;
     modal
       .querySelectorAll<HTMLInputElement>("input[data-var]")
       .forEach((input) => {
         values[input.dataset.var ?? ""] = input.value;
       });
-    onInsert(resolveBody(snippet.body, values));
+    onInsert(resolveBody(snippet.body, values), target);
+    clearModalRefs();
     modal.remove();
   });
 }
 
 // ─── Text insertion ───────────────────────────────────────────────────────────
 
-function insertText(text: string) {
-  if (!activeField) return;
+function getEditableElement(el: Element | null): HTMLElement | null {
+  if (!el || !document.contains(el)) return null;
+  const tag = (el as HTMLElement).tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return el as HTMLElement;
+  if (tag === "DIV" && (el as HTMLDivElement).isContentEditable) return el as HTMLElement;
+  return null;
+}
 
-  const field = activeField as
+/** Target for insert: prefer the element that currently has focus in the tab (what user selected), else our stored activeField. */
+function getInsertTarget(): HTMLElement | null {
+  const focused = getEditableElement(document.activeElement as Element);
+  if (focused) return focused;
+  if (activeField && document.contains(activeField)) return activeField;
+  return null;
+}
+
+function insertText(text: string, targetField?: HTMLElement | null) {
+  const fieldToUse =
+    targetField && document.contains(targetField)
+      ? targetField
+      : activeField;
+  if (!fieldToUse || !document.contains(fieldToUse)) return;
+
+  const field = fieldToUse as
     | HTMLInputElement
     | HTMLTextAreaElement
     | HTMLDivElement;
 
-  if (typeof (field as HTMLInputElement).focus === "function") {
-    (field as HTMLInputElement).focus();
+  try {
+    if (typeof (field as HTMLInputElement).focus === "function") {
+      (field as HTMLInputElement).focus();
+    }
+  } catch {
+    // Ignore "Illegal invocation" when focus is called from content script
   }
 
   if (typedBuffer && field.tagName !== "DIV") {
@@ -464,6 +514,7 @@ function insertText(text: string) {
     (field as HTMLInputElement).selectionStart = (
       field as HTMLInputElement
     ).selectionEnd = start;
+    typedBuffer = "";
   }
 
   if (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable) {
@@ -474,17 +525,25 @@ function insertText(text: string) {
       inputOrTextarea.selectionStart ?? inputOrTextarea.value.length;
     const current = inputOrTextarea.value;
     const newValue = current.slice(0, start) + text + current.slice(start);
-    inputOrTextarea.value = newValue;
-    inputOrTextarea.selectionStart = inputOrTextarea.selectionEnd =
-      start + text.length;
-    field.dispatchEvent(new Event("input", { bubbles: true }));
+    try {
+      inputOrTextarea.value = newValue;
+      inputOrTextarea.selectionStart = inputOrTextarea.selectionEnd =
+        start + text.length;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    } catch {
+      try {
+        document.execCommand("insertText", false, text);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 
 function selectSnippet(snippet: any) {
   closeOverlay();
-  openFillModal(snippet, (resolved) => {
-    insertText(resolved);
+  openFillModal(snippet, (resolved, targetField) => {
+    insertText(resolved, targetField);
     chrome.runtime.sendMessage({ type: "RECORD_USE", snippetId: snippet.id });
   });
 }
@@ -582,6 +641,7 @@ document.addEventListener(
 document.addEventListener("focusin", (e) => {
   const field = e.target as HTMLElement;
   if (overlay?.contains(field)) return;
+  if (fillModalElement?.contains(field)) return;
   if (!isDomainAllowed()) {
     closeOverlay();
     hideActionButton();
@@ -594,6 +654,11 @@ document.addEventListener("focusin", (e) => {
   ) {
     activeField = field;
     showActionButton();
+    if (pendingInsertOnNextFocus) {
+      const text = pendingInsertOnNextFocus;
+      pendingInsertOnNextFocus = null;
+      insertText(text);
+    }
   }
 });
 
@@ -633,11 +698,43 @@ document.addEventListener("keydown", (e) => {
 
 // ─── Message from background (e.g. from browser action or other triggers) ─────
 
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === "OPEN_PICKER") {
-    if (activeField && isSignedIn) {
-      showActionButton();
-      renderOverlay("");
+chrome.runtime.onMessage.addListener(
+  (message, _sender, sendResponse) => {
+    if (message.type === "OPEN_PICKER") {
+      if (activeField && isSignedIn) {
+        showActionButton();
+        renderOverlay("");
+      }
+      return;
+    }
+    if (message.type === "INSERT_TEXT") {
+      const text = typeof message.text === "string" ? message.text : "";
+      const target = getInsertTarget();
+      if (!text) {
+        sendResponse({ ok: false, reason: "empty" });
+        return true;
+      }
+      if (target) {
+        const fieldToUse = target;
+        const toInsert = text;
+        sendResponse({ ok: true });
+        setTimeout(() => {
+          if (!document.contains(fieldToUse)) return;
+          pendingInsertOnWindowFocus = null;
+          try {
+            const prev = activeField;
+            activeField = fieldToUse;
+            insertText(toInsert);
+            activeField = prev;
+          } catch {
+            activeField = prev;
+          }
+        }, 350);
+      } else {
+        pendingInsertOnNextFocus = text;
+        sendResponse({ ok: true });
+      }
+      return true;
     }
   }
-});
+);
