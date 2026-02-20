@@ -1,10 +1,10 @@
-import "./content.css"
-import type { PlasmoCSConfig } from "plasmo"
+import "./content.css";
+import type { PlasmoCSConfig } from "plasmo";
 
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"],
-  run_at: "document_idle"
-}
+  run_at: "document_idle",
+};
 
 /**
  * SnipDM Content Script (Plasmo)
@@ -12,32 +12,56 @@ export const config: PlasmoCSConfig = {
  * shows an overlay picker near caret, and inserts resolved snippet text.
  */
 
-const TRIGGER_CHAR = "/"
-let activeField: HTMLElement | null = null
-let overlay: HTMLDivElement | null = null
-let actionButton: HTMLButtonElement | null = null
-let snippets: any[] = []
-let typedBuffer = ""
-let pickerOpen = false
+const TRIGGER_CHAR = "/";
+const DEBUG = true;
+let activeField: HTMLElement | null = null;
+let overlay: HTMLDivElement | null = null;
+let actionButton: HTMLButtonElement | null = null;
+let snippets: any[] = [];
+let typedBuffer = "";
+let pickerOpen = false;
+let isSignedIn = false;
+let suppressBlurClose = false;
 
 // ─── Fetch snippets from background ──────────────────────────────────────────
 
 async function loadSnippets() {
   return new Promise<any[]>((resolve) => {
     chrome.runtime.sendMessage({ type: "GET_SNIPPETS" }, (res) => {
-      snippets = res?.snippets ?? []
-      resolve(snippets)
-    })
-  })
+      snippets = res?.snippets ?? [];
+      resolve(snippets);
+    });
+  });
 }
 
-void loadSnippets()
+void loadSnippets();
+
+function syncAuthState() {
+  chrome.storage.local.get(["session", "apiKey"], (res) => {
+    const parsedSession = res?.session ? JSON.parse(res?.session) : null;
+    isSignedIn = Boolean(parsedSession?.access_token && res?.apiKey);
+    if (DEBUG) console.debug("[SnipDM]", "auth state", { isSignedIn });
+    if (!isSignedIn) {
+      closeOverlay();
+      hideActionButton();
+    }
+  });
+}
+
+syncAuthState();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.session || changes.apiKey) {
+    syncAuthState();
+  }
+});
 
 // ─── Overlay UI ──────────────────────────────────────────────────────────────
 
 function createOverlay() {
-  const el = document.createElement("div")
-  el.id = "snipdm-overlay"
+  const el = document.createElement("div");
+  el.id = "snipdm-overlay";
   el.style.cssText = `
     position: fixed;
     z-index: 2147483647;
@@ -51,59 +75,88 @@ function createOverlay() {
     overflow-y: auto;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 13px;
-  `
-  document.body.appendChild(el)
-  return el
+  `;
+  el.addEventListener("mousedown", (e) => {
+    suppressBlurClose = true;
+    // Prevent input losing focus when clicking overlay
+    e.preventDefault();
+  });
+  el.addEventListener("mouseup", () => {
+    suppressBlurClose = false;
+  });
+  document.body.appendChild(el);
+  return el;
 }
 
+const SNIPPET_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/><line x1="8" y1="8" x2="10" y2="8"/></svg>`;
+
 function createActionButton() {
-  const btn = document.createElement("button")
-  btn.id = "snipdm-action"
-  btn.type = "button"
-  btn.setAttribute("aria-label", "Insert SnipDM snippet")
-  btn.innerHTML = "✦"
+  const btn = document.createElement("button");
+  btn.id = "snipdm-action";
+  btn.type = "button";
+  btn.setAttribute("aria-label", "Insert SnipDM snippet");
+  btn.innerHTML = SNIPPET_ICON_SVG;
+  btn.style.display = "flex";
+  btn.style.alignItems = "center";
+  btn.style.justifyContent = "center";
   btn.addEventListener("mousedown", (e) => {
+    suppressBlurClose = true;
     // Prevent focus loss in inputs
-    e.preventDefault()
-  })
+    e.preventDefault();
+  });
+  btn.addEventListener("mouseup", () => {
+    suppressBlurClose = false;
+  });
   btn.addEventListener("click", () => {
-    if (!activeField) return
-    renderOverlay("")
-  })
-  document.body.appendChild(btn)
-  return btn
+    if (!activeField) return;
+    renderOverlay("");
+  });
+  document.body.appendChild(btn);
+  return btn;
 }
 
 function positionActionButton(btn: HTMLButtonElement) {
-  if (!activeField) return
-  const rect = activeField.getBoundingClientRect()
-  const top = rect.top + 6
-  const left = rect.right - 28
-  btn.style.top = `${Math.max(6, Math.min(top, window.innerHeight - 34))}px`
-  btn.style.left = `${Math.max(6, Math.min(left, window.innerWidth - 34))}px`
+  if (!activeField) return;
+  const rect = activeField.getBoundingClientRect();
+  const top = rect.top + 6;
+  const left = rect.right - 28;
+  btn.style.top = `${Math.max(6, Math.min(top, window.innerHeight - 34))}px`;
+  btn.style.left = `${Math.max(6, Math.min(left, window.innerWidth - 34))}px`;
 }
 
 function showActionButton() {
-  if (!actionButton) actionButton = createActionButton()
-  positionActionButton(actionButton)
-  actionButton.style.display = "flex"
+  if (!isSignedIn) return;
+  if (DEBUG) console.debug("[SnipDM]", "show action button");
+  if (!actionButton) actionButton = createActionButton();
+  positionActionButton(actionButton);
+  actionButton.style.display = "flex";
 }
 
 function hideActionButton() {
-  if (actionButton) actionButton.style.display = "none"
+  if (actionButton) actionButton.style.display = "none";
 }
 
 function positionOverlay(el: HTMLDivElement) {
-  if (!activeField) return
-  const rect = activeField.getBoundingClientRect()
-  const top = rect.bottom + 6
-  const left = rect.left
-  el.style.top = `${Math.min(top, window.innerHeight - 340)}px`
-  el.style.left = `${Math.min(left, window.innerWidth - 390)}px`
+  if (!activeField) return;
+  if (actionButton) {
+    const rect = actionButton.getBoundingClientRect();
+    const top = rect.bottom + 6;
+    const left = rect.left;
+    el.style.top = `${Math.min(top, window.innerHeight - 340)}px`;
+    el.style.left = `${Math.min(left, window.innerWidth - 390)}px`;
+    return;
+  }
+  const rect = activeField.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = rect.left;
+  el.style.top = `${Math.min(top, window.innerHeight - 340)}px`;
+  el.style.left = `${Math.min(left, window.innerWidth - 390)}px`;
 }
 
 function renderOverlay(query: string) {
-  if (!overlay) overlay = createOverlay()
+  if (!isSignedIn) return;
+  if (DEBUG) console.debug("[SnipDM]", "render overlay", { query });
+  if (!overlay) overlay = createOverlay();
 
   const matched = snippets
     .filter(
@@ -111,11 +164,11 @@ function renderOverlay(query: string) {
         s.shortcut?.toLowerCase().startsWith("/" + query.toLowerCase()) ||
         s.title?.toLowerCase().includes(query.toLowerCase())
     )
-    .slice(0, 8)
+    .slice(0, 8);
 
   if (matched.length === 0) {
-    closeOverlay()
-    return
+    closeOverlay();
+    return;
   }
 
   overlay.innerHTML = matched
@@ -134,80 +187,87 @@ function renderOverlay(query: string) {
             gap: 8px;
           "
         >
-          ${s.shortcut ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 5px;border-radius:4px;color:#64748b">${s.shortcut}</code>` : ""}
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a;font-weight:500">${s.title}</span>
+          ${
+            s.shortcut
+              ? `<code style="font-size:11px;background:#f1f5f9;padding:1px 5px;border-radius:4px;color:#64748b">${s.shortcut}</code>`
+              : ""
+          }
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a;font-weight:500">${
+            s.title
+          }</span>
         </div>
       `
     )
-    .join("")
+    .join("");
 
-  const items = overlay.querySelectorAll<HTMLDivElement>(".snipdm-item")
+  const items = overlay.querySelectorAll<HTMLDivElement>(".snipdm-item");
   items.forEach((item, i) => {
-    item.addEventListener("mouseenter", () => setHighlight(i))
-    item.addEventListener("click", () => selectSnippet(matched[i]))
-  })
-  if (items[0]) items[0].style.background = "#f8fafc"
+    item.addEventListener("mouseenter", () => setHighlight(i));
+    item.addEventListener("click", () => selectSnippet(matched[i]));
+  });
+  if (items[0]) items[0].style.background = "#f8fafc";
 
-  positionOverlay(overlay)
-  overlay.style.display = "block"
-  pickerOpen = true
+  positionOverlay(overlay);
+  overlay.style.display = "block";
+  pickerOpen = true;
 }
 
 function setHighlight(index: number) {
-  const items = overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? []
+  const items = overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? [];
   items.forEach((item, i) => {
-    item.style.background = i === index ? "#f8fafc" : ""
-  })
+    item.style.background = i === index ? "#f8fafc" : "";
+  });
 }
 
 function closeOverlay() {
   if (overlay) {
-    overlay.style.display = "none"
+    overlay.style.display = "none";
   }
-  pickerOpen = false
-  typedBuffer = ""
+  pickerOpen = false;
+  typedBuffer = "";
+  if (DEBUG) console.debug("[SnipDM]", "close overlay");
 }
 
 // ─── Variable detection & fill modal ─────────────────────────────────────────
 
 function detectVariables(body: string) {
-  const regex = /\{([^}]+)\}/g
-  const seen = new Set<string>()
-  const results: Array<{ name: string; defaultValue?: string }> = []
-  let match: RegExpExecArray | null
+  const regex = /\{([^}]+)\}/g;
+  const seen = new Set<string>();
+  const results: Array<{ name: string; defaultValue?: string }> = [];
+  let match: RegExpExecArray | null;
   while ((match = regex.exec(body)) !== null) {
-    const [name, defaultVal] = match[1].split("=")
-    const key = name.trim()
+    const [name, defaultVal] = match[1].split("=");
+    const key = name.trim();
     if (!seen.has(key)) {
-      seen.add(key)
-      results.push({ name: key, defaultValue: defaultVal?.trim() })
+      seen.add(key);
+      results.push({ name: key, defaultValue: defaultVal?.trim() });
     }
   }
-  return results
+  return results;
 }
 
 function resolveBody(body: string, values: Record<string, string>) {
   return body.replace(/\{([^}]+)\}/g, (_, raw) => {
-    const [name, defaultVal] = raw.split("=")
-    return values[name.trim()] ?? defaultVal?.trim() ?? `{${name.trim()}}`
-  })
+    const [name, defaultVal] = raw.split("=");
+    return values[name.trim()] ?? defaultVal?.trim() ?? `{${name.trim()}}`;
+  });
 }
 
 function openFillModal(snippet: any, onInsert: (resolved: string) => void) {
-  const vars = detectVariables(snippet.body)
+  const vars = detectVariables(snippet.body);
   if (vars.length === 0) {
-    onInsert(snippet.body)
-    return
+    onInsert(snippet.body);
+    return;
   }
 
-  const modal = document.createElement("div")
+  const modal = document.createElement("div");
   modal.style.cssText = `
     position: fixed; inset: 0; z-index: 2147483648;
     background: rgba(0,0,0,.4);
     display: flex; align-items: center; justify-content: center;
-  `
+  `;
 
-  const values: Record<string, string> = {}
+  const values: Record<string, string> = {};
   const fieldsHtml = vars
     .map(
       (v) => `
@@ -223,7 +283,7 @@ function openFillModal(snippet: any, onInsert: (resolved: string) => void) {
       </div>
     `
     )
-    .join("")
+    .join("");
 
   modal.innerHTML = `
     <div style="background:#fff;border-radius:12px;padding:24px;min-width:340px;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.2);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
@@ -235,60 +295,94 @@ function openFillModal(snippet: any, onInsert: (resolved: string) => void) {
         <button id="snipdm-insert" style="padding:7px 14px;border:none;border-radius:6px;background:#1e293b;color:#fff;cursor:pointer;font-size:13px;font-weight:500">Insert</button>
       </div>
     </div>
-  `
+  `;
 
-  document.body.appendChild(modal)
-  modal.querySelector("input")?.focus()
+  document.body.appendChild(modal);
+  modal.querySelector("input")?.focus();
 
-  modal.querySelector("#snipdm-cancel")?.addEventListener("click", () => modal.remove())
+  modal
+    .querySelector("#snipdm-cancel")
+    ?.addEventListener("click", () => modal.remove());
   modal.querySelector("#snipdm-insert")?.addEventListener("click", () => {
-    modal.querySelectorAll<HTMLInputElement>("input[data-var]").forEach((input) => {
-      values[input.dataset.var ?? ""] = input.value
-    })
-    onInsert(resolveBody(snippet.body, values))
-    modal.remove()
-  })
+    modal
+      .querySelectorAll<HTMLInputElement>("input[data-var]")
+      .forEach((input) => {
+        values[input.dataset.var ?? ""] = input.value;
+      });
+    onInsert(resolveBody(snippet.body, values));
+    modal.remove();
+  });
 }
 
 // ─── Text insertion ───────────────────────────────────────────────────────────
 
 function insertText(text: string) {
-  if (!activeField) return
+  if (!activeField) return;
 
-  const field = activeField as HTMLInputElement | HTMLTextAreaElement | HTMLDivElement
+  const field = activeField as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLDivElement;
+
+  if (typeof (field as HTMLInputElement).focus === "function") {
+    (field as HTMLInputElement).focus();
+  }
 
   if (typedBuffer && field.tagName !== "DIV") {
-    const start = (field as HTMLInputElement).selectionStart! - typedBuffer.length
-    const end = (field as HTMLInputElement).selectionStart!
-    const current = (field as HTMLInputElement).value
-    ;(field as HTMLInputElement).value = current.slice(0, start) + current.slice(end)
-    ;(field as HTMLInputElement).selectionStart = (field as HTMLInputElement).selectionEnd = start
+    const caret =
+      (field as HTMLInputElement).selectionStart ??
+      (field as HTMLInputElement).value.length;
+    const start = caret - typedBuffer.length;
+    const end = caret;
+    const current = (field as HTMLInputElement).value;
+    (field as HTMLInputElement).value =
+      current.slice(0, start) + current.slice(end);
+    (field as HTMLInputElement).selectionStart = (
+      field as HTMLInputElement
+    ).selectionEnd = start;
   }
 
   if (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable) {
-    document.execCommand("insertText", false, text)
+    document.execCommand("insertText", false, text);
   } else {
     const nativeSetter =
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set ??
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set
+      Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value"
+      )?.set ??
+      Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
 
     if (nativeSetter) {
-      const start = (field as HTMLInputElement).selectionStart!
-      const current = (field as HTMLInputElement).value
-      nativeSetter.call(field, current.slice(0, start) + text + current.slice(start))
-      ;(field as HTMLInputElement).selectionStart = (field as HTMLInputElement).selectionEnd =
-        start + text.length
-      field.dispatchEvent(new Event("input", { bubbles: true }))
+      const start =
+        (field as HTMLInputElement).selectionStart ??
+        (field as HTMLInputElement).value.length;
+      const current = (field as HTMLInputElement).value;
+      nativeSetter.call(
+        field,
+        current.slice(0, start) + text + current.slice(start)
+      );
+      (field as HTMLInputElement).selectionStart = (
+        field as HTMLInputElement
+      ).selectionEnd = start + text.length;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
 }
 
 function selectSnippet(snippet: any) {
-  closeOverlay()
+  if (DEBUG)
+    console.debug("[SnipDM]", "select snippet", {
+      id: snippet?.id,
+      title: snippet?.title,
+    });
+  closeOverlay();
   openFillModal(snippet, (resolved) => {
-    insertText(resolved)
-    chrome.runtime.sendMessage({ type: "RECORD_USE", snippetId: snippet.id })
-  })
+    insertText(resolved);
+    chrome.runtime.sendMessage({ type: "RECORD_USE", snippetId: snippet.id });
+  });
 }
 
 // ─── Keyboard listener ────────────────────────────────────────────────────────
@@ -296,126 +390,130 @@ function selectSnippet(snippet: any) {
 document.addEventListener(
   "keydown",
   (e) => {
-    if (!pickerOpen) return
+    if (!pickerOpen) return;
 
-    const items = overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? []
+    const items =
+      overlay?.querySelectorAll<HTMLDivElement>(".snipdm-item") ?? [];
     const highlighted = Array.from(items).findIndex(
       (el) => el.style.background === "rgb(248, 250, 252)"
-    )
+    );
 
     if (e.key === "ArrowDown") {
-      e.preventDefault()
-      const next = (highlighted + 1) % items.length
-      setHighlight(next)
+      e.preventDefault();
+      const next = (highlighted + 1) % items.length;
+      setHighlight(next);
     } else if (e.key === "ArrowUp") {
-      e.preventDefault()
-      const prev = (highlighted - 1 + items.length) % items.length
-      setHighlight(prev)
+      e.preventDefault();
+      const prev = (highlighted - 1 + items.length) % items.length;
+      setHighlight(prev);
     } else if (e.key === "Enter") {
-      e.preventDefault()
-      const idx = Math.max(0, highlighted)
-      items[idx]?.dispatchEvent(new MouseEvent("click"))
+      e.preventDefault();
+      const idx = Math.max(0, highlighted);
+      items[idx]?.dispatchEvent(new MouseEvent("click"));
     } else if (e.key === "Escape") {
-      closeOverlay()
+      closeOverlay();
     }
   },
   { capture: true }
-)
+);
 
 // ─── Input listener (shortcut detection) ─────────────────────────────────────
 
 document.addEventListener(
   "input",
   (e) => {
-    const field = e.target as HTMLElement
+    const field = e.target as HTMLElement;
     const isEditable =
       field.tagName === "INPUT" ||
       field.tagName === "TEXTAREA" ||
-      (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable)
+      (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable);
 
-    if (!isEditable) return
-    activeField = field
-    showActionButton()
+    if (!isEditable) return;
+    activeField = field;
+    showActionButton();
 
     const value =
       field.tagName === "DIV"
-        ? (field.textContent ?? "")
-        : (field as HTMLInputElement).value ?? ""
+        ? field.textContent ?? ""
+        : (field as HTMLInputElement).value ?? "";
 
     const caret =
-      field.tagName === "DIV" ? value.length : (field as HTMLInputElement).selectionStart ?? 0
+      field.tagName === "DIV"
+        ? value.length
+        : (field as HTMLInputElement).selectionStart ?? 0;
 
-    const beforeCaret = value.slice(0, caret)
-    const triggerIdx = beforeCaret.lastIndexOf(TRIGGER_CHAR)
+    const beforeCaret = value.slice(0, caret);
+    const triggerIdx = beforeCaret.lastIndexOf(TRIGGER_CHAR);
 
     if (triggerIdx === -1) {
-      closeOverlay()
-      return
+      closeOverlay();
+      return;
     }
 
-    const query = beforeCaret.slice(triggerIdx + 1)
+    const query = beforeCaret.slice(triggerIdx + 1);
     if (query.includes(" ")) {
-      closeOverlay()
-      return
+      closeOverlay();
+      return;
     }
 
-    typedBuffer = TRIGGER_CHAR + query
-    renderOverlay(query)
+    typedBuffer = TRIGGER_CHAR + query;
+    renderOverlay(query);
   },
   true
-)
+);
 
 document.addEventListener("focusin", (e) => {
-  const field = e.target as HTMLElement
+  const field = e.target as HTMLElement;
   if (
     field.tagName === "INPUT" ||
     field.tagName === "TEXTAREA" ||
     (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable)
   ) {
-    activeField = field
-    showActionButton()
+    activeField = field;
+    showActionButton();
   }
-})
+});
 
 window.addEventListener("scroll", () => {
   if (actionButton && actionButton.style.display !== "none") {
-    positionActionButton(actionButton)
+    positionActionButton(actionButton);
   }
-})
+});
 
 window.addEventListener("resize", () => {
   if (actionButton && actionButton.style.display !== "none") {
-    positionActionButton(actionButton)
+    positionActionButton(actionButton);
   }
-})
+});
 
 document.addEventListener("focusout", () => {
   setTimeout(() => {
-    closeOverlay()
-    hideActionButton()
-  }, 150)
-})
+    if (suppressBlurClose) return;
+    closeOverlay();
+    hideActionButton();
+  }, 150);
+});
 
 // ─── Open picker: keyboard shortcut (Plasmo-friendly) ───────────────────────────
 // Listen in content script so the shortcut works without relying on chrome.commands.
 
 document.addEventListener("keydown", (e) => {
-  if (!activeField) return
+  if (!activeField) return;
   const isShortcut =
-    (e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "Space"
+    (e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "Space";
   if (isShortcut) {
-    e.preventDefault()
-    renderOverlay("")
+    e.preventDefault();
+    renderOverlay("");
   }
-})
+});
 
 // ─── Message from background (e.g. from browser action or other triggers) ─────
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "OPEN_PICKER") {
-    if (activeField) {
-      showActionButton()
-      renderOverlay("")
+    if (activeField && isSignedIn) {
+      showActionButton();
+      renderOverlay("");
     }
   }
-})
+});

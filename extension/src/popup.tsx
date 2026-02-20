@@ -38,12 +38,39 @@ const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
-const supabase =
-  SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
+let supabase: ReturnType<typeof createClient> | null = null;
+let warnedInvalidSupabaseConfig = false;
+
+const isValidSupabaseUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const getSupabaseClient = () => {
+  if (!supabase) {
+    if (
+      !SUPABASE_URL ||
+      !SUPABASE_PUBLISHABLE_KEY ||
+      !isValidSupabaseUrl(SUPABASE_URL)
+    ) {
+      if (!warnedInvalidSupabaseConfig) {
+        console.warn(
+          "[SnipDM] Invalid Supabase config. Set PLASMO_PUBLIC_SUPABASE_URL (https) and PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+        );
+        warnedInvalidSupabaseConfig = true;
+      }
+      return null;
+    }
+    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabase;
+};
 
 type Snippet = {
   id?: string;
@@ -357,13 +384,14 @@ export default function Popup() {
     email: string;
     password: string;
   }) => {
-    if (!supabase) {
+    const client = getSupabaseClient();
+    if (!client) {
       throw new Error(
-        "Missing Supabase env vars. Set PLASMO_PUBLIC_SUPABASE_URL and PLASMO_PUBLIC_SUPABASE_ANON_KEY."
+        "Invalid Supabase config. Set PLASMO_PUBLIC_SUPABASE_URL (https) and PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
       );
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await client.auth.signInWithPassword({
       email,
       password,
     });

@@ -13,12 +13,37 @@ const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
-const supabase =
-  SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
+let supabase:
+  | ReturnType<typeof createClient>
+  | null = null;
+let warnedInvalidSupabaseConfig = false;
+
+const isValidSupabaseUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const getSupabaseClient = () => {
+  if (!supabase) {
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !isValidSupabaseUrl(SUPABASE_URL)) {
+      if (!warnedInvalidSupabaseConfig) {
+        console.warn(
+          "[SnipDM] Invalid Supabase config. Set PLASMO_PUBLIC_SUPABASE_URL (https) and PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+        );
+        warnedInvalidSupabaseConfig = true;
+      }
+      return null;
+    }
+    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabase;
+};
 
 // ─── Auth (@plasmohq/storage local, same as popup) ─────────────────────────────
 
@@ -37,25 +62,19 @@ async function getApiKey(): Promise<string | null> {
 // ─── Snippet sync ────────────────────────────────────────────────────────────
 
 async function syncSnippets() {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    console.warn(
-      "[SnipDM] Missing Supabase env vars. Set PLASMO_PUBLIC_SUPABASE_URL and PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
-    );
-    return;
-  }
+  const client = getSupabaseClient();
+  if (!client) return;
   const session = await getSession();
   const apiKey = await getApiKey();
   if (!session?.access_token || !apiKey) return;
 
   try {
-    if (!supabase) return;
-
-    const { error: sessionError } = await supabase.auth.setSession(
+    const { error: sessionError } = await client.auth.setSession(
       session as { access_token: string; refresh_token: string }
     );
     if (sessionError) throw sessionError;
 
-    const { data: snippets, error } = await supabase
+    const { data: snippets, error } = await client
       .from("snippets")
       .select("id,title,shortcut,body,shared_scope,snippet_tags(tag_name,tag_color)");
 
