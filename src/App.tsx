@@ -10,6 +10,7 @@ import AppLayout from "@/components/AppLayout";
 
 import LoginPage from "./pages/Login";
 import SignupPage from "./pages/Signup";
+import CreateWorkspacePage from "./pages/CreateWorkspace";
 import SnippetsPage from "./pages/Snippets";
 import SnippetEditorPage from "./pages/SnippetEditor";
 import SettingsPage from "./pages/Settings";
@@ -41,7 +42,18 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
 
-            {/* Protected routes */}
+            {/* Protected: create workspace when user has none (no sidebar) */}
+            <Route
+              path="/create-workspace"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceProvider>
+                    <CreateWorkspacePage />
+                  </WorkspaceProvider>
+                </ProtectedRoute>
+              }
+            />
+            {/* Protected routes (require workspace; redirect to /create-workspace if none) */}
             <Route
               path="/snippets"
               element={

@@ -89,15 +89,18 @@ export type Database = {
       snippet_tags: {
         Row: {
           snippet_id: string
-          tag_id: string
+          tag_name: string
+          tag_color: string
         }
         Insert: {
           snippet_id: string
-          tag_id: string
+          tag_name: string
+          tag_color: string
         }
         Update: {
           snippet_id?: string
-          tag_id?: string
+          tag_name?: string
+          tag_color?: string
         }
         Relationships: [
           {
@@ -105,13 +108,6 @@ export type Database = {
             columns: ["snippet_id"]
             isOneToOne: false
             referencedRelation: "snippets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "snippet_tags_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "tags"
             referencedColumns: ["id"]
           },
         ]
@@ -319,9 +315,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      workspace_tags: {
+        Row: {
+          workspace_id: string
+          name: string
+          color: string
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      create_workspace: {
+        Args: { p_name: string }
+        Returns: string
+      }
       get_workspace_role: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: Database["public"]["Enums"]["workspace_role"]

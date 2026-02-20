@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -8,7 +8,7 @@ import {
   useFoldersQuery,
   useSnippetQuery,
   useSaveSnippetMutation,
-  useCreateTagMutation,
+  TAG_COLORS,
   type Tag,
   type Folder,
 } from "@/hooks/useSnippetEditor";
@@ -29,7 +29,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function detectVariables(body: string): Array<{ name: string; defaultValue?: string }> {
+function detectVariables(
+  body: string
+): Array<{ name: string; defaultValue?: string }> {
   const regex = /\{([^}]+)\}/g;
   const seen = new Set<string>();
   const results: Array<{ name: string; defaultValue?: string }> = [];
@@ -56,9 +58,13 @@ export default function SnippetEditorPage() {
   const [title, setTitle] = useState("");
   const [shortcut, setShortcut] = useState("");
   const [body, setBody] = useState("");
-  const [sharedScope, setSharedScope] = useState<"private" | "workspace">("private");
+  const [sharedScope, setSharedScope] = useState<"private" | "workspace">(
+    "private"
+  );
   const [folderId, setFolderId] = useState<string | null>(null);
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<
+    Array<{ name: string; color: string }>
+  >([]);
   const [newTagName, setNewTagName] = useState("");
   const [testOpen, setTestOpen] = useState(false);
   const [shortcutError, setShortcutError] = useState("");
@@ -67,7 +73,6 @@ export default function SnippetEditorPage() {
   const { data: folders = [] } = useFoldersQuery(workspace?.id);
   const { data: snippetData, isLoading: loading } = useSnippetQuery(id, !isNew);
   const saveMutation = useSaveSnippetMutation();
-  const createTagMutation = useCreateTagMutation(workspace?.id, user?.id);
 
   const variables = detectVariables(body);
 
@@ -78,11 +83,23 @@ export default function SnippetEditorPage() {
     setBody(snippetData.body);
     setSharedScope(snippetData.shared_scope as "private" | "workspace");
     setFolderId(snippetData.folder_id ?? null);
-    setSelectedTagIds((snippetData.snippet_tags ?? []).map((st) => st.tag_id));
+    setSelectedTags(
+      (snippetData.snippet_tags ?? []).map((st) => ({
+        name: st.tag_name,
+        color: st.tag_color,
+      }))
+    );
   }, [snippetData]);
 
   const handleSave = async () => {
-    if (!workspace || !user) return;
+    if (!workspace || !user) {
+      toast({
+        title: "Cannot save",
+        description: "Workspace or session is not ready. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!title.trim()) {
       toast({ title: "Title is required", variant: "destructive" });
       return;
@@ -114,30 +131,48 @@ export default function SnippetEditorPage() {
         body,
         sharedScope,
         folderId,
-        selectedTagIds,
+        selectedTags,
       });
       toast({ title: isNew ? "Snippet created" : "Snippet saved" });
       navigate("/snippets");
     } catch (err: any) {
-      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
   const handleCreateTag = () => {
     if (!newTagName.trim()) return;
-    createTagMutation.mutate(newTagName, {
-      onSuccess: (tag) => {
-        setSelectedTagIds((prev) => [...prev, tag.id]);
-        setNewTagName("");
-      },
-    });
+    const name = newTagName.trim();
+    const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+    setSelectedTags((prev) =>
+      prev.some((t) => t.name === name) ? prev : [...prev, { name, color }]
+    );
+    setNewTagName("");
   };
 
-  const toggleTag = (tagId: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
+  const toggleTag = (tagName: string) => {
+    setSelectedTags((prev) =>
+      prev.some((t) => t.name === tagName)
+        ? prev.filter((t) => t.name !== tagName)
+        : [
+            ...prev,
+            allTags.find((t) => t.name === tagName) ?? {
+              name: tagName,
+              color: TAG_COLORS[0],
+            },
+          ]
     );
   };
+
+  const tagsForPicker = useMemo(() => {
+    const byName = new Map(allTags.map((t) => [t.name, t]));
+    selectedTags.forEach((t) => byName.set(t.name, t));
+    return Array.from(byName.values());
+  }, [allTags, selectedTags]);
 
   if (loading) {
     return (
@@ -151,7 +186,12 @@ export default function SnippetEditorPage() {
     <div className="max-w-2xl mx-auto px-6 py-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/snippets")} className="h-8 w-8">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate("/snippets")}
+          className="h-8 w-8"
+        >
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h1 className="text-base font-semibold text-foreground">
@@ -162,7 +202,9 @@ export default function SnippetEditorPage() {
       <div className="space-y-5">
         {/* Title */}
         <div className="space-y-1.5">
-          <Label htmlFor="title">Title <span className="text-destructive">*</span></Label>
+          <Label htmlFor="title">
+            Title <span className="text-destructive">*</span>
+          </Label>
           <Input
             id="title"
             placeholder="e.g. Introduction message"
@@ -185,7 +227,9 @@ export default function SnippetEditorPage() {
             }}
             className={shortcutError ? "border-destructive" : ""}
           />
-          {shortcutError && <p className="text-xs text-destructive">{shortcutError}</p>}
+          {shortcutError && (
+            <p className="text-xs text-destructive">{shortcutError}</p>
+          )}
           <p className="text-xs text-muted-foreground">
             Type this shortcut in the extension to auto-expand this snippet.
           </p>
@@ -202,8 +246,9 @@ export default function SnippetEditorPage() {
             className="min-h-[160px] font-mono text-sm resize-y"
           />
           <p className="text-xs text-muted-foreground">
-            Use <code className="bg-muted px-1 rounded">{"{variable}"}</code> for placeholders.
-            Defaults: <code className="bg-muted px-1 rounded">{"{name=Hayato}"}</code>
+            Use <code className="bg-muted px-1 rounded">{"{variable}"}</code>{" "}
+            for placeholders. Defaults:{" "}
+            <code className="bg-muted px-1 rounded">{"{name=Hayato}"}</code>
           </p>
         </div>
 
@@ -218,7 +263,11 @@ export default function SnippetEditorPage() {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {variables.map((v) => (
-                <Badge key={v.name} variant="secondary" className="font-mono text-xs">
+                <Badge
+                  key={v.name}
+                  variant="secondary"
+                  className="font-mono text-xs"
+                >
                   {"{"}
                   {v.name}
                   {v.defaultValue ? `=${v.defaultValue}` : ""}
@@ -243,20 +292,25 @@ export default function SnippetEditorPage() {
         <div className="space-y-1.5">
           <Label>Tags</Label>
           <div className="flex flex-wrap gap-1.5 mb-2">
-            {allTags.map((tag) => (
+            {tagsForPicker.map((tag) => (
               <button
-                key={tag.id}
+                key={tag.name}
                 type="button"
-                onClick={() => toggleTag(tag.id)}
+                onClick={() => toggleTag(tag.name)}
                 className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-colors ${
-                  selectedTagIds.includes(tag.id)
+                  selectedTags.some((t) => t.name === tag.name)
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"
                 }`}
               >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: tag.color }}
+                />
                 {tag.name}
-                {selectedTagIds.includes(tag.id) && <X className="w-3 h-3 ml-0.5" />}
+                {selectedTags.some((t) => t.name === tag.name) && (
+                  <X className="w-3 h-3 ml-0.5" />
+                )}
               </button>
             ))}
           </div>
@@ -265,7 +319,9 @@ export default function SnippetEditorPage() {
               placeholder="New tag name…"
               value={newTagName}
               onChange={(e) => setNewTagName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateTag())}
+              onKeyDown={(e) =>
+                e.key === "Enter" && (e.preventDefault(), handleCreateTag())
+              }
               className="h-8 text-sm"
             />
             <Button
@@ -284,14 +340,19 @@ export default function SnippetEditorPage() {
         {folders.length > 0 && (
           <div className="space-y-1.5">
             <Label>Folder</Label>
-            <Select value={folderId ?? "none"} onValueChange={(v) => setFolderId(v === "none" ? null : v)}>
+            <Select
+              value={folderId ?? "none"}
+              onValueChange={(v) => setFolderId(v === "none" ? null : v)}
+            >
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="No folder" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No folder</SelectItem>
                 {folders.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -301,7 +362,9 @@ export default function SnippetEditorPage() {
         {/* Scope toggle */}
         <div className="flex items-center justify-between py-3 px-4 rounded-lg border border-border">
           <div>
-            <p className="text-sm font-medium text-foreground">Share with workspace</p>
+            <p className="text-sm font-medium text-foreground">
+              Share with workspace
+            </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {sharedScope === "workspace"
                 ? "Visible to all workspace members"
@@ -317,10 +380,18 @@ export default function SnippetEditorPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2">
-          <Button onClick={handleSave} disabled={saveMutation.isPending} className="min-w-24">
+          <Button
+            onClick={handleSave}
+            disabled={saveMutation.isPending || !user}
+            className="min-w-24"
+          >
             {saveMutation.isPending ? "Saving…" : "Save"}
           </Button>
-          <Button variant="ghost" onClick={() => navigate("/snippets")} disabled={saveMutation.isPending}>
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/snippets")}
+            disabled={saveMutation.isPending}
+          >
             Cancel
           </Button>
         </div>

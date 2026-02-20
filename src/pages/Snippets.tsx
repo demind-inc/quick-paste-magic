@@ -62,6 +62,7 @@ export default function SnippetsPage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<"all" | "private" | "workspace">("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [duplicateSnippet, setDuplicateSnippet] = useState<Snippet | null>(null);
 
   const { data: snippets = [], isLoading: loading } = useSnippetsQuery(workspace?.id, sortKey);
   const { data: tags = [] } = useTagsQuery(workspace?.id);
@@ -70,7 +71,7 @@ export default function SnippetsPage() {
 
   const filtered = (snippets as Snippet[]).filter((s) => {
     if (scopeFilter !== "all" && s.shared_scope !== scopeFilter) return false;
-    if (selectedTag && !s.tags?.some((t) => t.id === selectedTag)) return false;
+    if (selectedTag && !s.tags?.some((t) => t.name === selectedTag)) return false;
     if (search) {
       const q = search.toLowerCase();
       const matchTitle = s.title.toLowerCase().includes(q);
@@ -106,6 +107,7 @@ export default function SnippetsPage() {
         folder_id: snippet.folder_id,
       });
       toast({ title: "Snippet duplicated" });
+      setDuplicateSnippet(null);
     } catch (err) {
       toast({
         title: "Failed to duplicate",
@@ -159,10 +161,10 @@ export default function SnippetsPage() {
               </button>
               {tags.map((tag) => (
                 <button
-                  key={tag.id}
-                  onClick={() => setSelectedTag(selectedTag === tag.id ? null : tag.id)}
+                  key={tag.name}
+                  onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
                   className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                    selectedTag === tag.id
+                    selectedTag === tag.name
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                   }`}
@@ -272,7 +274,7 @@ export default function SnippetsPage() {
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       {snippet.tags?.map((tag) => (
                         <Badge
-                          key={tag.id}
+                          key={tag.name}
                           variant="secondary"
                           className="text-xs px-1.5 py-0 h-5"
                           style={{ borderLeft: `3px solid ${tag.color}` }}
@@ -296,7 +298,7 @@ export default function SnippetsPage() {
                       size="icon"
                       className="w-7 h-7 text-muted-foreground hover:text-foreground"
                       title="Duplicate"
-                      onClick={() => handleDuplicate(snippet)}
+                      onClick={() => setDuplicateSnippet(snippet)}
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </Button>
@@ -341,6 +343,23 @@ export default function SnippetsPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!duplicateSnippet} onOpenChange={(o) => !o && setDuplicateSnippet(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate snippet?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A copy of &quot;{duplicateSnippet?.title}&quot; will be created. You can edit it afterward.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => duplicateSnippet && handleDuplicate(duplicateSnippet)}>
+              Duplicate
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
