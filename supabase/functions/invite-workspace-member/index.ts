@@ -2,23 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- Deno npm: specifier; resolved at runtime
 // @ts-ignore
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getUserIdFromRequest } from "../_shared/jwt.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
 };
-
-/** Resolves user id from JWT using Supabase Auth (see https://supabase.com/docs/guides/functions/auth). */
-async function getInvitedByFromToken(
-  token: string,
-  supabaseUrl: string,
-  publishableKey: string
-): Promise<string | null> {
-  const supabase = createClient(supabaseUrl, publishableKey);
-  const { data, error } = await supabase.auth.getClaims(token);
-  if (error || !data?.claims?.sub) return null;
-  return data.claims.sub as string;
-}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,43 +27,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const invitedBy = await getUserIdFromRequest(req);
+    if (!invitedBy) {
       return Response.json(
-        { error: "Missing authorization header" },
+        { error: "Missing or invalid authorization" },
         { status: 401, headers: corsHeaders }
       );
     }
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const publishableKey =
-      Deno.env.get("SB_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
     const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:5173";
-
-    if (!publishableKey) {
-      return Response.json(
-        {
-          error:
-            "Server misconfiguration: set SB_PUBLISHABLE_KEY (or SUPABASE_ANON_KEY) for JWT verification",
-        },
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    const invitedBy = await getInvitedByFromToken(
-      token,
-      supabaseUrl,
-      publishableKey
-    );
-
-    if (!invitedBy) {
-      return Response.json(
-        { error: "Invalid or expired token" },
-        { status: 401, headers: corsHeaders }
-      );
-    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 

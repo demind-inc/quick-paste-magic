@@ -11,17 +11,18 @@ Sends a workspace invitation email via Supabase Auth. Only workspace owners can 
 
 ## Auth
 
-JWT verification uses Supabase’s recommended pattern: `supabase.auth.getClaims(token)` with the project’s publishable (or anon) key. See [Securing Edge Functions](https://supabase.com/docs/guides/functions/auth).
+JWT is verified **inside** the function using the [Securing Edge Functions](https://supabase.com/docs/guides/functions/auth) pattern so it works with Supabase’s new JWT Signing Keys:
+
+- **Platform check disabled**: `verify_jwt = false` in `config.toml` so the request reaches the function (avoids legacy “Invalid JWT” from the edge runtime).
+- **In-function verification**: `_shared/jwt.ts` uses `jose` and the project’s JWKS (`SUPABASE_URL/auth/v1/.well-known/jwks.json`) to verify the Bearer token and read `sub`. No publishable or anon key is required for verification.
 
 ## Secrets
 
-- **SB_PUBLISHABLE_KEY** or **SUPABASE_ANON_KEY** – **Required** for JWT verification. Use your project’s publishable key (`sb_publishable_...`) or legacy anon key. Set as a function secret (e.g. `SB_PUBLISHABLE_KEY`).
 - **SITE_URL** – Optional. Base URL of your app (e.g. `https://yourapp.com`) for the invite redirect. Defaults to `http://localhost:5173` if unset.
 
 Set in dashboard: Project → Edge Functions → invite-workspace-member → Secrets, or:
 
 ```bash
-npx supabase secrets set SB_PUBLISHABLE_KEY=sb_publishable_xxx
 npx supabase secrets set SITE_URL=https://yourapp.com
 ```
 
