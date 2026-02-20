@@ -1,2 +1,4 @@
 .plasmo/*
 build/*
+
+**/*.mdb

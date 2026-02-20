@@ -6,7 +6,7 @@ export const config: PlasmoConfig = {
     name: "SnipDM",
     version: "1.0.0",
     description: "Insert DM snippets into any text field from your SnipDM workspace.",
-    permissions: ["storage", "activeTab", "scripting", "alarms"],
+    permissions: ["storage", "activeTab", "scripting"],
     host_permissions: ["<all_urls>"],
     action: {
       default_title: "SnipDM"

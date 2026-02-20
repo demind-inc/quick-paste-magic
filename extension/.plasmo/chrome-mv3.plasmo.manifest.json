@@ -22,6 +22,9 @@
   "background": {
     "service_worker": "./static/background/index.ts"
   },
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
       "matches": [

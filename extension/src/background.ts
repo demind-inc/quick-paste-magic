@@ -1,9 +1,13 @@
 /**
  * SnipDM Background Service Worker (Plasmo)
  * Handles: auth token storage, snippet sync, command routing
+ * Uses @plasmohq/storage (chrome.storage.local) so it matches the popup.
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { Storage } from "@plasmohq/storage";
+
+const storage = new Storage({ area: "local" });
 
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY =
@@ -16,19 +20,17 @@ const supabase =
       })
     : null;
 
-// ─── Auth ───────────────────────────────────────────────────────────────────
+// ─── Auth (@plasmohq/storage local, same as popup) ─────────────────────────────
 
-async function getSession() {
-  const { session } = await chrome.storage.local.get("session");
+type StoredSession = { access_token?: string; [key: string]: unknown } | null;
+
+async function getSession(): Promise<StoredSession> {
+  const session = await storage.get<StoredSession>("session");
   return session ?? null;
 }
 
-async function setSession(session: unknown) {
-  await chrome.storage.local.set({ session });
-}
-
-async function getApiKey() {
-  const { apiKey } = await chrome.storage.local.get("apiKey");
+async function getApiKey(): Promise<string | null> {
+  const apiKey = await storage.get<string>("apiKey");
   return apiKey ?? null;
 }
 
@@ -48,7 +50,9 @@ async function syncSnippets() {
   try {
     if (!supabase) return;
 
-    const { error: sessionError } = await supabase.auth.setSession(session);
+    const { error: sessionError } = await supabase.auth.setSession(
+      session as { access_token: string; refresh_token: string }
+    );
     if (sessionError) throw sessionError;
 
     const { data: snippets, error } = await supabase
@@ -59,19 +63,15 @@ async function syncSnippets() {
 
     if (error) throw error;
 
-    await chrome.storage.local.set({ snippets, lastSynced: Date.now() });
+    await storage.set("snippets", snippets);
+    await storage.set("lastSynced", Date.now());
     return snippets;
   } catch (err) {
     console.error("[SnipDM] Sync failed:", err);
   }
 }
 
-// ─── Periodic sync (every 5 min) ─────────────────────────────────────────────
-
-chrome.alarms.create("syncSnippets", { periodInMinutes: 5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "syncSnippets") void syncSnippets();
-});
+// Snippets are synced when the popup opens (SYNC_NOW), not on a timer.
 
 // ─── Keyboard command ────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "GET_SNIPPETS") {
-    chrome.storage.local.get("snippets").then(({ snippets }) => {
+    storage.get("snippets").then((snippets) => {
       sendResponse({ snippets: snippets ?? [] });
     });
     return true;
@@ -103,10 +103,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "SET_SESSION") {
-    setSession(message.session).then(() => {
-      void syncSnippets();
-      sendResponse({ ok: true });
-    });
+    void syncSnippets().then(() => sendResponse({ ok: true }));
     return true;
   }
 
@@ -114,7 +111,3 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
   }
 });
-
-// Initial sync on install / startup
-chrome.runtime.onInstalled.addListener(() => void syncSnippets());
-chrome.runtime.onStartup.addListener(() => void syncSnippets());

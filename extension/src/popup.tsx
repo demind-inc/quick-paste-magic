@@ -1,6 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { Storage } from "@plasmohq/storage";
 import "./popup.css";
+
+const storage = new Storage({ area: "local" });
+
+async function loadStoredAuth(): Promise<{
+  session: Session | null;
+  apiKey: string | null;
+}> {
+  const [session, apiKey] = await Promise.all([
+    storage.get<Session | null>("session"),
+    storage.get<string | null>("apiKey"),
+  ]);
+  return {
+    session: session ?? null,
+    apiKey: apiKey ?? null,
+  };
+}
+
+async function setStoredAuth(
+  session: Session | null,
+  apiKey: string | null
+): Promise<void> {
+  await storage.set("session", session);
+  await storage.set("apiKey", apiKey);
+}
+
+async function clearStoredAuth(): Promise<void> {
+  await storage.remove("session");
+  await storage.remove("apiKey");
+}
 
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY =
@@ -55,6 +85,10 @@ function sendMessage<T = unknown>(
   payload: Record<string, unknown> = {}
 ) {
   return new Promise<T>((resolve) => {
+    if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+      resolve(undefined as T);
+      return;
+    }
     chrome.runtime.sendMessage({ type, ...payload }, (res) =>
       resolve(res as T)
     );
@@ -267,8 +301,8 @@ function MainView({
 export default function Popup() {
   const [session, setSession] = useState<Session | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [modalData, setModalData] = useState<{
     snippet: Snippet;
     vars: Placeholder[];
@@ -276,26 +310,34 @@ export default function Popup() {
   } | null>(null);
   const { toast, show } = useToast();
 
+  // Restore auth from chrome.storage.local every time popup opens
+  useEffect(() => {
+    let cancelled = false;
+    loadStoredAuth().then(({ session: s, apiKey: k }) => {
+      if (!cancelled) {
+        setSession(s);
+        setApiKey(k);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadSnippets = async () => {
     const res = await sendMessage<{ snippets?: Snippet[] }>("GET_SNIPPETS");
     setSnippets(res?.snippets ?? []);
   };
 
-  useEffect(() => {
-    if (typeof chrome === "undefined" || !chrome.storage?.local) {
-      setLoading(false);
-      return;
-    }
-    chrome.storage.local.get(["session", "apiKey"], (res) => {
-      setSession(res?.session ?? null);
-      setApiKey(res?.apiKey ?? null);
-      setLoading(false);
-    });
-  }, []);
-
+  // Fetch snippets from API every time popup opens (when logged in)
   useEffect(() => {
     if (!session || !apiKey) return;
-    void loadSnippets();
+    const run = async () => {
+      await sendMessage("SYNC_NOW");
+      await loadSnippets();
+    };
+    void run();
   }, [session, apiKey]);
 
   const handleConnect = async ({
@@ -321,14 +363,15 @@ export default function Popup() {
       throw new Error(error.message ?? "Login failed.");
     }
 
-    await chrome.storage.local.set({ session: data?.session, apiKey: key });
-    await sendMessage("SET_SESSION", { session: data?.session });
-    setSession(data?.session ?? null);
+    const sessionData = (data?.session ?? null) as unknown as Session | null;
+    await setStoredAuth(sessionData, key);
+    setSession(sessionData);
     setApiKey(key);
+    await sendMessage("SET_SESSION");
   };
 
   const handleLogout = async () => {
-    await chrome.storage.local.clear();
+    await clearStoredAuth();
     setSession(null);
     setApiKey(null);
     setSnippets([]);
