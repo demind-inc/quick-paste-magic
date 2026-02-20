@@ -111,6 +111,16 @@ body {
   font-weight: 500;
 }
 .item-actions button:hover { background: #f1f5f9; }
+.item-external {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 5px;
+  text-decoration: none;
+}
+.item-external:hover { color: #64748b; background: #f1f5f9; }
 .btn-insert { background: #1e293b !important; color: #fff !important; border-color: #1e293b !important; }
 .btn-insert:hover { opacity: .88; }
 

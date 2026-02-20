@@ -13,7 +13,6 @@ export const config: PlasmoCSConfig = {
  */
 
 const TRIGGER_CHAR = "/";
-const DEBUG = true;
 let activeField: HTMLElement | null = null;
 let overlay: HTMLDivElement | null = null;
 let actionButton: HTMLButtonElement | null = null;
@@ -40,7 +39,6 @@ function syncAuthState() {
   chrome.storage.local.get(["session", "apiKey"], (res) => {
     const parsedSession = res?.session ? JSON.parse(res?.session) : null;
     isSignedIn = Boolean(parsedSession?.access_token && res?.apiKey);
-    if (DEBUG) console.debug("[SnipDM]", "auth state", { isSignedIn });
     if (!isSignedIn) {
       closeOverlay();
       hideActionButton();
@@ -54,6 +52,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.session || changes.apiKey) {
     syncAuthState();
+  }
+  if (changes.snippets) {
+    void loadSnippets();
   }
 });
 
@@ -126,7 +127,6 @@ function positionActionButton(btn: HTMLButtonElement) {
 
 function showActionButton() {
   if (!isSignedIn) return;
-  if (DEBUG) console.debug("[SnipDM]", "show action button");
   if (!actionButton) actionButton = createActionButton();
   positionActionButton(actionButton);
   actionButton.style.display = "flex";
@@ -153,9 +153,9 @@ function positionOverlay(el: HTMLDivElement) {
   el.style.left = `${Math.min(left, window.innerWidth - 390)}px`;
 }
 
-function renderOverlay(query: string) {
+async function renderOverlay(query: string) {
   if (!isSignedIn) return;
-  if (DEBUG) console.debug("[SnipDM]", "render overlay", { query });
+  await loadSnippets();
   if (!overlay) overlay = createOverlay();
 
   const matched = snippets
@@ -225,7 +225,6 @@ function closeOverlay() {
   }
   pickerOpen = false;
   typedBuffer = "";
-  if (DEBUG) console.debug("[SnipDM]", "close overlay");
 }
 
 // ─── Variable detection & fill modal ─────────────────────────────────────────
@@ -345,39 +344,19 @@ function insertText(text: string) {
   if (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable) {
     document.execCommand("insertText", false, text);
   } else {
-    const nativeSetter =
-      Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype,
-        "value"
-      )?.set ??
-      Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-      )?.set;
-
-    if (nativeSetter) {
-      const start =
-        (field as HTMLInputElement).selectionStart ??
-        (field as HTMLInputElement).value.length;
-      const current = (field as HTMLInputElement).value;
-      nativeSetter.call(
-        field,
-        current.slice(0, start) + text + current.slice(start)
-      );
-      (field as HTMLInputElement).selectionStart = (
-        field as HTMLInputElement
-      ).selectionEnd = start + text.length;
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    }
+    const inputOrTextarea = field as HTMLInputElement | HTMLTextAreaElement;
+    const start =
+      inputOrTextarea.selectionStart ?? inputOrTextarea.value.length;
+    const current = inputOrTextarea.value;
+    const newValue = current.slice(0, start) + text + current.slice(start);
+    inputOrTextarea.value = newValue;
+    inputOrTextarea.selectionStart = inputOrTextarea.selectionEnd =
+      start + text.length;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }
 
 function selectSnippet(snippet: any) {
-  if (DEBUG)
-    console.debug("[SnipDM]", "select snippet", {
-      id: snippet?.id,
-      title: snippet?.title,
-    });
   closeOverlay();
   openFillModal(snippet, (resolved) => {
     insertText(resolved);

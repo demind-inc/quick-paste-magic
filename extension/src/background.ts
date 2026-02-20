@@ -31,9 +31,6 @@ const getSupabaseClient = () => {
   if (!supabase) {
     if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !isValidSupabaseUrl(SUPABASE_URL)) {
       if (!warnedInvalidSupabaseConfig) {
-        console.warn(
-          "[SnipDM] Invalid Supabase config. Set PLASMO_PUBLIC_SUPABASE_URL (https) and PLASMO_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
-        );
         warnedInvalidSupabaseConfig = true;
       }
       return null;
@@ -83,8 +80,8 @@ async function syncSnippets() {
     await storage.set("snippets", snippets);
     await storage.set("lastSynced", Date.now());
     return snippets;
-  } catch (err) {
-    console.error("[SnipDM] Sync failed:", err);
+  } catch {
+    // Sync failed; storage keeps previous snippets
   }
 }
 
@@ -105,10 +102,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SYNC_NOW") {
     syncSnippets()
       .then(() => sendResponse({ ok: true }))
-      .catch((err) => {
-        console.error("[SnipDM] SYNC_NOW failed:", err);
-        sendResponse({ ok: false });
-      });
+      .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
