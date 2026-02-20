@@ -256,13 +256,11 @@ function MainView({
   snippets,
   onSync,
   onLogout,
-  onInsert,
   onCopy,
 }: {
   snippets: Snippet[];
   onSync: () => void;
   onLogout: () => void;
-  onInsert: (s: Snippet) => void;
   onCopy: (s: Snippet) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -310,21 +308,32 @@ function MainView({
                 <code className="item-shortcut">{s.shortcut}</code>
               ) : null}
               <div className="item-actions">
-                <button className="btn-insert" onClick={() => onInsert(s)}>
-                  Insert
-                </button>
                 <button className="btn-copy" onClick={() => onCopy(s)}>
                   Copy
                 </button>
                 <a
-                  href="https://snipdm.vercel.app/"
+                  href={
+                    s.id
+                      ? `https://snipdm.vercel.app/snippets/${s.id}/edit`
+                      : "https://snipdm.vercel.app/"
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="item-external"
-                  title="Open SnipDM"
-                  aria-label="Open SnipDM in new tab"
+                  title="Open in SnipDM"
+                  aria-label="Open snippet in SnipDM"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
@@ -428,7 +437,9 @@ export default function Popup() {
     try {
       const res = await sendMessage<{ ok?: boolean }>("SYNC_NOW");
       await loadSnippets();
-      show(res?.ok !== false ? "Snippets updated" : "Sync failed — showing cached");
+      show(
+        res?.ok !== false ? "Snippets updated" : "Sync failed — showing cached"
+      );
     } catch {
       show("Sync failed — showing cached");
       await loadSnippets();
@@ -528,7 +539,6 @@ export default function Popup() {
           snippets={snippets}
           onSync={handleSync}
           onLogout={handleLogout}
-          onInsert={(s) => handleInsert(s, "insert")}
           onCopy={(s) => handleInsert(s, "copy")}
         />
       )}
