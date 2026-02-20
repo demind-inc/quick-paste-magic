@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Zap, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 const navItems = [
   { title: "Snippets", url: "/snippets", icon: Home },
@@ -38,9 +38,7 @@ export function AppSidebar() {
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="px-4 py-3 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-sidebar-primary flex items-center justify-center flex-shrink-0">
-            <Zap className="w-3.5 h-3.5 text-sidebar-primary-foreground" />
-          </div>
+          <img src="/logo.png" alt="SnipDM" className="w-7 h-7 rounded-md object-contain flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-sidebar-foreground truncate">SnipDM</p>
             {workspace && (

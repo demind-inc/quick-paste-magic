@@ -1,8 +1,8 @@
 # SnipDM Chrome Extension
 
-This folder contains the scaffolded source code for the **SnipDM Chrome Extension** (Manifest V3).
+This folder contains the **SnipDM Chrome Extension** built with **Plasmo + React (TSX)** (Manifest V3).
 
-> **Note:** This is reference/scaffold code. The extension must be built and loaded separately from the webapp. The webapp at `src/` is the management UI; this `extension/` folder is the browser extension.
+> **Note:** The extension is built and loaded separately from the webapp. The webapp at `src/` is the management UI; this `extension/` folder is the browser extension.
 
 ---
 
@@ -10,32 +10,37 @@ This folder contains the scaffolded source code for the **SnipDM Chrome Extensio
 
 | File | Purpose |
 |---|---|
-| `manifest.json` | Manifest V3 configuration — permissions, content scripts, popup, commands |
-| `background.js` | Service worker — auth token storage, snippet sync from Supabase, command routing |
-| `content.js` | Content script — detects focused editable fields, shortcut detection (`/intro`), overlay picker, text insertion |
-| `content.css` | Minimal styles for the content script overlay |
-| `popup.html` | Extension popup shell |
-| `popup.js` | Popup logic — login, snippet search, insert/copy, placeholder fill modal |
-| `popup.css` | Popup styles |
+| `plasmo.config.ts` | Plasmo config & manifest overrides |
+| `src/background.ts` | Service worker — auth token storage, snippet sync from Supabase, command routing |
+| `src/content.ts` | Content script — detects focused editable fields, shortcut detection (`/intro`), overlay picker, text insertion |
+| `src/content.css` | Minimal styles for the content script overlay |
+| `src/popup.tsx` | React popup (TSX) — login, snippet search, insert/copy, placeholder fill modal |
+| `src/popup.css` | Popup styles |
+| `legacy/` | Previous static extension scaffold (kept for reference) |
 
 ---
 
 ## Setup
 
-1. **Configure Supabase credentials** — In `background.js` and `popup.js`, replace:
+1. **Configure Supabase credentials** — Create `extension/.env` (see `.env.example`) with:
    ```
-   const SUPABASE_URL = "https://YOUR_SUPABASE_URL.supabase.co";
-   const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+   PLASMO_PUBLIC_SUPABASE_URL="https://YOUR_SUPABASE_URL.supabase.co"
+   PLASMO_PUBLIC_SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_KEY"
    ```
-   with your actual project values from the Extension settings page in the webapp.
+   Use your actual project values from the Extension settings page in the webapp.
 
-2. **Add icons** — Create an `icons/` folder with `icon16.png`, `icon32.png`, `icon48.png`, `icon128.png`.
+2. **Add icons** — Create an `assets/` folder with `icon16.png`, `icon32.png`, `icon48.png`, `icon128.png`.
 
-3. **Load in Chrome**:
+3. **Install dependencies & build**:
+   - `cd extension`
+   - `npm install`
+   - `npm run build` (or `npm run dev` for live reload)
+
+4. **Load in Chrome**:
    - Open `chrome://extensions`
    - Enable **Developer mode**
    - Click **Load unpacked**
-   - Select this `extension/` folder
+   - Select `extension/build/chrome-mv3-prod/` (or `extension/build/chrome-mv3-dev/` if using dev)
 
 4. **Authenticate** — Open the popup, paste your **Workspace API key** (from Settings → Extension in the webapp), enter your email/password, and click Connect. Snippets will sync automatically.
 
@@ -55,7 +60,9 @@ This folder contains the scaffolded source code for the **SnipDM Chrome Extensio
 
 ## Production considerations
 
-- **React popup**: Replace `popup.js`/`popup.css` with a React + Vite build for a richer UI.
+- **Supabase security**: Use secure token storage and rotate keys as needed.
+- **Realtime sync**: Subscribe to Supabase Realtime in the background worker for instant updates when snippets change.
+- **Per-domain formatting**: Implement per-site adapters for complex editors (Notion, Slack, HubSpot).
 - **Secure token storage**: Use `chrome.storage.session` for in-memory token storage (cleared when browser closes).
 - **Realtime sync**: Subscribe to Supabase Realtime in the background worker for instant updates when snippets change.
 - **Per-domain formatting**: Implement per-site adapters for complex editors (Notion, Slack, HubSpot).

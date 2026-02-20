@@ -25,3 +25,7 @@ dist-ssr
 
 .env*
 .vercel
+
+# Plasmo / Parcel cache (LevelDB)
+**/data.mdb
+**/lock.mdb
