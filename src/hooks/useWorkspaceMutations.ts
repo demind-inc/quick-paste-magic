@@ -75,25 +75,6 @@ export function useRegenerateApiKeyMutation(userId: string | undefined) {
   });
 }
 
-export function useUpdateDomainDenylistMutation(userId: string | undefined) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      workspaceId,
-      domainDenylist,
-    }: { workspaceId: string; domainDenylist: string[] }) => {
-      const { error } = await supabase
-        .from("workspaces")
-        .update({ domain_denylist: domainDenylist })
-        .eq("id", workspaceId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
-    },
-  });
-}
-
 export function useUpdateDomainAllowlistMutation(userId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({

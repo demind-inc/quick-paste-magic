@@ -4,7 +4,6 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import {
   useRegenerateApiKeyMutation,
   useUpdateDomainAllowlistMutation,
-  useUpdateDomainDenylistMutation,
 } from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,18 +19,9 @@ export default function ExtensionSettingsPage() {
 
   const [copied, setCopied] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const [denylistInput, setDenylistInput] = useState(
-    workspace?.domain_denylist?.join(", ") ?? ""
-  );
   const [allowlistInput, setAllowlistInput] = useState(
     workspace?.domain_allowlist?.join(", ") ?? ""
   );
-
-  useEffect(() => {
-    if (workspace?.domain_denylist) {
-      setDenylistInput(workspace.domain_denylist.join(", "));
-    }
-  }, [workspace?.domain_denylist]);
 
   useEffect(() => {
     if (workspace?.domain_allowlist) {
@@ -40,7 +30,6 @@ export default function ExtensionSettingsPage() {
   }, [workspace?.domain_allowlist]);
 
   const regenerateMutation = useRegenerateApiKeyMutation(user?.id);
-  const denylistMutation = useUpdateDomainDenylistMutation(user?.id);
   const allowlistMutation = useUpdateDomainAllowlistMutation(user?.id);
 
   const isOwner = myRole === "owner";
@@ -71,20 +60,6 @@ export default function ExtensionSettingsPage() {
       toast({ title: "API key regenerated" });
     } catch (err: any) {
       toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const saveDenylist = async () => {
-    if (!workspace) return;
-    const parsed = denylistInput
-      .split(",")
-      .map((d) => d.trim().toLowerCase())
-      .filter(Boolean);
-    try {
-      await denylistMutation.mutateAsync({ workspaceId: workspace.id, domainDenylist: parsed });
-      toast({ title: "Domain denylist saved" });
-    } catch (err: any) {
-      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
     }
   };
 
@@ -183,45 +158,6 @@ export default function ExtensionSettingsPage() {
         {workspace?.domain_allowlist?.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">
             {workspace.domain_allowlist.map((d) => (
-              <span
-                key={d}
-                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-mono"
-              >
-                {d}
-              </span>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <Separator className="my-8" />
-
-      {/* Domain denylist */}
-      <section>
-        <h2 className="text-sm font-semibold text-foreground mb-1">Domain denylist</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          The extension will not activate on these domains (e.g. banking sites, password managers).
-        </p>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Domains (comma-separated)</Label>
-            <Input
-              placeholder="chase.com, 1password.com, lastpass.com"
-              value={denylistInput}
-              onChange={(e) => setDenylistInput(e.target.value)}
-              disabled={!isOwner}
-            />
-          </div>
-          {isOwner && (
-            <Button size="sm" onClick={saveDenylist} disabled={denylistMutation.isPending}>
-              {denylistMutation.isPending ? "Saving…" : "Save denylist"}
-            </Button>
-          )}
-        </div>
-
-        {workspace?.domain_denylist?.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {workspace.domain_denylist.map((d) => (
               <span
                 key={d}
                 className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-mono"
