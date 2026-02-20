@@ -93,3 +93,22 @@ export function useUpdateDomainDenylistMutation(userId: string | undefined) {
     },
   });
 }
+
+export function useUpdateDomainAllowlistMutation(userId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      workspaceId,
+      domainAllowlist,
+    }: { workspaceId: string; domainAllowlist: string[] }) => {
+      const { error } = await supabase
+        .from("workspaces")
+        .update({ domain_allowlist: domainAllowlist })
+        .eq("id", workspaceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+    },
+  });
+}

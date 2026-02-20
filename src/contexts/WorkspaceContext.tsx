@@ -9,6 +9,7 @@ export interface Workspace {
   name: string;
   owner_id: string;
   api_key: string;
+  domain_allowlist: string[];
   domain_denylist: string[];
   created_at: string;
   updated_at: string;

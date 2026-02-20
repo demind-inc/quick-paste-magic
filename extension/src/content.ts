@@ -23,6 +23,7 @@ let isSignedIn = false;
 let suppressBlurClose = false;
 /** Current search filter text inside the overlay (when open). */
 let overlaySearchFilter = "";
+let domainAllowlist: string[] = [];
 
 // ─── Fetch snippets from background ──────────────────────────────────────────
 
@@ -36,6 +37,46 @@ async function loadSnippets() {
 }
 
 void loadSnippets();
+
+function normalizeAllowlist(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+      }
+    } catch {
+      // ignore
+    }
+    return raw
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function isDomainAllowed() {
+  if (domainAllowlist.length === 0) return true;
+  const host = window.location.hostname.toLowerCase();
+  return domainAllowlist.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
+function loadAllowlist() {
+  chrome.storage.local.get(["domainAllowlist"], (res) => {
+    domainAllowlist = normalizeAllowlist(res?.domainAllowlist);
+    if (!isDomainAllowed()) {
+      closeOverlay();
+      hideActionButton();
+    }
+  });
+}
+
+loadAllowlist();
 
 function syncAuthState() {
   chrome.storage.local.get(["session", "apiKey"], (res) => {
@@ -54,6 +95,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.session || changes.apiKey) {
     syncAuthState();
+  }
+  if (changes.domainAllowlist) {
+    domainAllowlist = normalizeAllowlist(changes.domainAllowlist.newValue);
+    if (!isDomainAllowed()) {
+      closeOverlay();
+      hideActionButton();
+    }
   }
   if (changes.snippets) {
     void loadSnippets();
@@ -130,6 +178,7 @@ function positionActionButton(btn: HTMLButtonElement) {
 
 function showActionButton() {
   if (!isSignedIn) return;
+  if (!isDomainAllowed()) return;
   if (!actionButton) actionButton = createActionButton();
   positionActionButton(actionButton);
   actionButton.style.display = "flex";
@@ -270,6 +319,7 @@ function buildOverlayContent() {
 
 async function renderOverlay(query: string) {
   if (!isSignedIn) return;
+  if (!isDomainAllowed()) return;
   await loadSnippets();
   if (!overlay) overlay = createOverlay();
 
@@ -485,6 +535,11 @@ document.addEventListener(
   (e) => {
     const field = e.target as HTMLElement;
     if (overlay?.contains(field)) return;
+    if (!isDomainAllowed()) {
+      closeOverlay();
+      hideActionButton();
+      return;
+    }
     const isEditable =
       field.tagName === "INPUT" ||
       field.tagName === "TEXTAREA" ||
@@ -527,6 +582,11 @@ document.addEventListener(
 document.addEventListener("focusin", (e) => {
   const field = e.target as HTMLElement;
   if (overlay?.contains(field)) return;
+  if (!isDomainAllowed()) {
+    closeOverlay();
+    hideActionButton();
+    return;
+  }
   if (
     field.tagName === "INPUT" ||
     field.tagName === "TEXTAREA" ||

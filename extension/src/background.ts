@@ -61,6 +61,7 @@ async function getApiKey(): Promise<string | null> {
 async function clearStoredAuth(): Promise<void> {
   await storage.remove("session");
   await storage.remove("apiKey");
+  await storage.remove("domainAllowlist");
 }
 
 // ─── Snippet sync ────────────────────────────────────────────────────────────
@@ -95,6 +96,32 @@ async function syncSnippets() {
 
     await storage.set("snippets", snippets);
     await storage.set("lastSynced", Date.now());
+
+    try {
+      const { data: userData } = await client.auth.getUser();
+      const userId = userData?.user?.id;
+      if (userId) {
+        const { data: memberData } = await client
+          .from("workspace_members")
+          .select("workspace_id")
+          .eq("user_id", userId)
+          .limit(1)
+          .maybeSingle();
+        const workspaceId = memberData?.workspace_id;
+        if (workspaceId) {
+          const { data: workspaceData } = await client
+            .from("workspaces")
+            .select("domain_allowlist")
+            .eq("id", workspaceId)
+            .maybeSingle();
+          const allowlist = workspaceData?.domain_allowlist ?? [];
+          await storage.set("domainAllowlist", allowlist);
+        }
+      }
+    } catch {
+      // Ignore allowlist sync failures
+    }
+
     return snippets;
   } catch {
     // Sync failed; storage keeps previous snippets

@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useRegenerateApiKeyMutation, useUpdateDomainDenylistMutation } from "@/hooks/useWorkspaceMutations";
+import {
+  useRegenerateApiKeyMutation,
+  useUpdateDomainAllowlistMutation,
+  useUpdateDomainDenylistMutation,
+} from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +23,9 @@ export default function ExtensionSettingsPage() {
   const [denylistInput, setDenylistInput] = useState(
     workspace?.domain_denylist?.join(", ") ?? ""
   );
+  const [allowlistInput, setAllowlistInput] = useState(
+    workspace?.domain_allowlist?.join(", ") ?? ""
+  );
 
   useEffect(() => {
     if (workspace?.domain_denylist) {
@@ -26,10 +33,29 @@ export default function ExtensionSettingsPage() {
     }
   }, [workspace?.domain_denylist]);
 
+  useEffect(() => {
+    if (workspace?.domain_allowlist) {
+      setAllowlistInput(workspace.domain_allowlist.join(", "));
+    }
+  }, [workspace?.domain_allowlist]);
+
   const regenerateMutation = useRegenerateApiKeyMutation(user?.id);
   const denylistMutation = useUpdateDomainDenylistMutation(user?.id);
+  const allowlistMutation = useUpdateDomainAllowlistMutation(user?.id);
 
   const isOwner = myRole === "owner";
+
+  const allowlistUnchanged = (() => {
+    const saved = workspace?.domain_allowlist ?? [];
+    const current = allowlistInput
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    if (saved.length !== current.length) return false;
+    const a = [...saved].sort().join(",");
+    const b = [...current].sort().join(",");
+    return a === b;
+  })();
 
   const copyApiKey = async () => {
     if (!workspace?.api_key) return;
@@ -57,6 +83,20 @@ export default function ExtensionSettingsPage() {
     try {
       await denylistMutation.mutateAsync({ workspaceId: workspace.id, domainDenylist: parsed });
       toast({ title: "Domain denylist saved" });
+    } catch (err: any) {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const saveAllowlist = async () => {
+    if (!workspace) return;
+    const parsed = allowlistInput
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    try {
+      await allowlistMutation.mutateAsync({ workspaceId: workspace.id, domainAllowlist: parsed });
+      toast({ title: "Domain allowlist saved" });
     } catch (err: any) {
       toast({ title: "Failed to save", description: err.message, variant: "destructive" });
     }
@@ -109,6 +149,49 @@ export default function ExtensionSettingsPage() {
         <p className="text-xs text-muted-foreground mt-2">
           Keep this key secret. Paste it in the extension settings to sync your snippets.
         </p>
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* Domain allowlist */}
+      <section>
+        <h2 className="text-sm font-semibold text-foreground mb-1">Domain allowlist</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Only show the SnipDM snipping button on these domains. Leave empty to enable all domains.
+        </p>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Domains (comma-separated)</Label>
+            <Input
+              placeholder="docs.google.com, gmail.com, notion.so"
+              value={allowlistInput}
+              onChange={(e) => setAllowlistInput(e.target.value)}
+              disabled={!isOwner}
+            />
+          </div>
+          {isOwner && (
+            <Button
+              size="sm"
+              onClick={saveAllowlist}
+              disabled={allowlistMutation.isPending || allowlistUnchanged}
+            >
+              {allowlistMutation.isPending ? "Saving…" : "Save allowlist"}
+            </Button>
+          )}
+        </div>
+
+        {workspace?.domain_allowlist?.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {workspace.domain_allowlist.map((d) => (
+              <span
+                key={d}
+                className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-md font-mono"
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        )}
       </section>
 
       <Separator className="my-8" />

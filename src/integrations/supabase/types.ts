@@ -287,6 +287,7 @@ export type Database = {
         Row: {
           api_key: string
           created_at: string
+          domain_allowlist: string[]
           domain_denylist: string[]
           id: string
           name: string
@@ -296,6 +297,7 @@ export type Database = {
         Insert: {
           api_key?: string
           created_at?: string
+          domain_allowlist?: string[]
           domain_denylist?: string[]
           id?: string
           name: string
@@ -305,6 +307,7 @@ export type Database = {
         Update: {
           api_key?: string
           created_at?: string
+          domain_allowlist?: string[]
           domain_denylist?: string[]
           id?: string
           name?: string
