@@ -44,6 +44,7 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
 });
 
 async function fetchWorkspace(userId: string) {
+  await supabase.rpc("ensure_profile");
   const { data: memberData } = await supabase
     .from("workspace_members")
     .select("workspace_id, role")
@@ -67,21 +68,32 @@ async function fetchWorkspace(userId: string) {
 
   const { data: membersData } = await supabase
     .from("workspace_members")
-    .select(`
-      id, workspace_id, user_id, role, joined_at,
-      profiles:profiles(full_name, email, avatar_url)
-    `)
+    .select("id, workspace_id, user_id, role, joined_at")
     .eq("workspace_id", memberData.workspace_id);
 
-  const members =
-    membersData?.map((m: any) => ({
-      ...m,
-      profiles: Array.isArray(m.profiles) ? m.profiles[0] : m.profiles,
-    })) ?? [];
+  const memberList = membersData ?? [];
+  const userIds = [...new Set(memberList.map((m) => m.user_id))];
+
+  let profilesByUserId: Record<string, { full_name: string | null; email: string; avatar_url: string | null }> = {};
+  if (userIds.length > 0) {
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", userIds);
+    if (profilesData) {
+      profilesByUserId = Object.fromEntries(profilesData.map((p) => [p.id, p]));
+    }
+  }
+
+  const members: WorkspaceMember[] = memberList.map((m) => ({
+    ...m,
+    role: m.role as "owner" | "editor" | "viewer",
+    profiles: profilesByUserId[m.user_id] ?? undefined,
+  }));
 
   return {
     workspace,
-    members: members as WorkspaceMember[],
+    members,
     myRole,
   };
 }

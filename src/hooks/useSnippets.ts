@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { queryKeys } from "@/lib/queryKeys";
 
 export interface SnippetTag {
-  id: string;
   name: string;
   color: string;
 }
@@ -20,37 +19,38 @@ export interface SnippetRow {
   updated_at: string;
   owner_id: string;
   folder_id: string | null;
-  snippet_tags?: Array<{ tag_id: string; tags: SnippetTag | SnippetTag[] }>;
+  snippet_tags?: Array<{ tag_name: string; tag_color: string }>;
 }
 
 function normalizeSnippet(s: any) {
   return {
     ...s,
-    tags: (s.snippet_tags ?? []).map((st: any) => st.tags).filter(Boolean),
+    tags: (s.snippet_tags ?? []).map((st: any) => ({ name: st.tag_name, color: st.tag_color })),
   };
 }
 
 type SortKey = "updated_at" | "use_count" | "title";
 
 async function fetchSnippets(workspaceId: string, sortKey: SortKey) {
-  const { data } = await supabase
+  const { data } = await (supabase
     .from("snippets")
     .select(`
       id, title, shortcut, body, shared_scope, use_count,
       last_used_at, created_at, updated_at, owner_id, folder_id,
-      snippet_tags(tag_id, tags(id, name, color))
+      snippet_tags(tag_name, tag_color)
     `)
     .eq("workspace_id", workspaceId)
-    .order(sortKey, { ascending: sortKey === "title" });
-  return (data ?? []).map(normalizeSnippet);
+    .order(sortKey, { ascending: sortKey === "title" }) as any);
+  return ((data ?? []) as any[]).map(normalizeSnippet);
 }
 
 async function fetchTags(workspaceId: string) {
-  const { data } = await supabase
-    .from("tags")
-    .select("id, name, color")
-    .eq("workspace_id", workspaceId);
-  return data ?? [];
+  // workspace_tags is a view; cast needed until client types include Views in from()
+  const { data } = await (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from("workspace_tags").select("name, color").eq("workspace_id", workspaceId)
+  );
+  return (data ?? []) as SnippetTag[];
 }
 
 export function useSnippetsQuery(workspaceId: string | undefined, sortKey: SortKey) {

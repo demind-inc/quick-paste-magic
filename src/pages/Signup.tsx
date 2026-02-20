@@ -18,11 +18,15 @@ export default function SignupPage() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < 6) {
-      toast({ title: "Password too short", description: "At least 6 characters required.", variant: "destructive" });
+      toast({
+        title: "Password too short",
+        description: "At least 6 characters required.",
+        variant: "destructive",
+      });
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -30,16 +34,25 @@ export default function SignupPage() {
         emailRedirectTo: window.location.origin,
       },
     });
-    setLoading(false);
     if (error) {
-      toast({ title: "Signup failed", description: error.message, variant: "destructive" });
-    } else {
+      setLoading(false);
       toast({
-        title: "Check your email",
-        description: "We sent you a confirmation link. After confirming, you can sign in.",
+        title: "Signup failed",
+        description: error.message,
+        variant: "destructive",
       });
-      navigate("/login");
+      return;
     }
+    if (data.session) {
+      await supabase.rpc("ensure_profile");
+    }
+    setLoading(false);
+    toast({
+      title: "Check your email",
+      description:
+        "We sent you a confirmation link. After confirming, you can sign in.",
+    });
+    navigate("/login");
   };
 
   return (
@@ -53,7 +66,9 @@ export default function SignupPage() {
           <span className="font-semibold text-lg text-foreground">SnipDM</span>
         </div>
 
-        <h1 className="text-xl font-semibold text-foreground text-center mb-1">Create your account</h1>
+        <h1 className="text-xl font-semibold text-foreground text-center mb-1">
+          Create your account
+        </h1>
         <p className="text-sm text-muted-foreground text-center mb-8">
           Start building your snippet library
         </p>
@@ -64,7 +79,7 @@ export default function SignupPage() {
             <Input
               id="fullName"
               type="text"
-              placeholder="Hayato Tanaka"
+              placeholder="John Doe"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
@@ -100,7 +115,10 @@ export default function SignupPage() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link to="/login" className="text-foreground font-medium hover:underline">
+          <Link
+            to="/login"
+            className="text-foreground font-medium hover:underline"
+          >
             Sign in
           </Link>
         </p>

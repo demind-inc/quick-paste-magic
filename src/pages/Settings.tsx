@@ -13,7 +13,10 @@ export default function SettingsPage() {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
 
-  const { data: profileFullName } = useProfileQuery(user?.id);
+  const { data: profileFullName } = useProfileQuery(
+    user?.id,
+    user?.user_metadata?.full_name
+  );
   const [fullName, setFullName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
 
@@ -26,6 +29,9 @@ export default function SettingsPage() {
 
   const updateProfile = useUpdateProfileMutation(user?.id);
   const updateWorkspace = useUpdateWorkspaceMutation(user?.id);
+
+  const profileChanged = fullName !== (profileFullName ?? "");
+  const workspaceChanged = workspaceName !== (workspace?.name ?? "");
 
   const saveProfile = async () => {
     if (!user) return;
@@ -67,7 +73,11 @@ export default function SettingsPage() {
             <Label>Email</Label>
             <Input value={user?.email ?? ""} disabled className="text-muted-foreground" />
           </div>
-          <Button size="sm" onClick={saveProfile} disabled={updateProfile.isPending}>
+          <Button
+            size="sm"
+            onClick={saveProfile}
+            disabled={updateProfile.isPending || !profileChanged}
+          >
             {updateProfile.isPending ? "Saving…" : "Save profile"}
           </Button>
         </div>
@@ -87,7 +97,11 @@ export default function SettingsPage() {
               placeholder="My Workspace"
             />
           </div>
-          <Button size="sm" onClick={saveWorkspace} disabled={updateWorkspace.isPending}>
+          <Button
+            size="sm"
+            onClick={saveWorkspace}
+            disabled={updateWorkspace.isPending || !workspaceChanged}
+          >
             {updateWorkspace.isPending ? "Saving…" : "Save workspace"}
           </Button>
         </div>
