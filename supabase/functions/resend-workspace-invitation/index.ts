@@ -79,17 +79,56 @@ Deno.serve(async (req) => {
     const redirectTo = `${siteUrl.replace(/\/$/, "")}/accept-invite?token=${
       invitation.token
     }`;
+    const inviteData = {
+      workspace_invitation_id: invitation.id,
+      workspace_id: invitation.workspace_id,
+      role: invitation.role,
+    };
+
     const { error: inviteError } =
       await supabaseAdmin.auth.admin.inviteUserByEmail(invitation.email, {
-        data: {
-          workspace_invitation_id: invitation.id,
-          workspace_id: invitation.workspace_id,
-          role: invitation.role,
-        },
+        data: inviteData,
         redirectTo,
       });
 
     if (inviteError) {
+      const isAlreadyRegistered =
+        /already been registered|already exists|already registered/i.test(
+          inviteError.message ?? ""
+        );
+      if (isAlreadyRegistered) {
+        const { data: linkData, error: linkError } =
+          await supabaseAdmin.auth.admin.generateLink({
+            type: "invite",
+            email: invitation.email,
+            options: {
+              redirectTo,
+              data: inviteData,
+            },
+          });
+        if (linkError) {
+          return Response.json(
+            {
+              error:
+                linkError.message ||
+                "Failed to generate new invitation link",
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        const actionLink =
+          (linkData as { properties?: { action_link?: string } })?.properties
+            ?.action_link ??
+          (linkData as { action_link?: string })?.action_link;
+        return Response.json(
+          {
+            ok: true,
+            resend: true,
+            actionLink: actionLink ?? undefined,
+          },
+          { headers: corsHeaders }
+        );
+      }
       return Response.json(
         { error: inviteError.message || "Failed to resend invitation email" },
         { status: 400, headers: corsHeaders }

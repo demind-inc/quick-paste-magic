@@ -4,3 +4,6 @@ project_id = "dhbmjsdaiyvuydxojoef"
 # See: https://supabase.com/docs/guides/functions/auth
 [functions.invite-workspace-member]
 verify_jwt = false
+
+[functions.resend-workspace-invitation]
+verify_jwt = false

@@ -68,12 +68,21 @@ export function useResendInvitationMutation() {
       invitationId: string;
       workspaceId: string;
     }) => {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        throw new Error("You must be signed in to resend an invitation.");
+      }
       const { data, error } = await supabase.functions.invoke("resend-workspace-invitation", {
         body: { invitationId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw error;
-      const err = (data as { error?: string })?.error;
-      if (err) throw new Error(err);
+      const payload = data as { error?: string; ok?: boolean; actionLink?: string };
+      if (payload?.error) throw new Error(payload.error);
+      return payload;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({

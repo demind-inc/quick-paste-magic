@@ -6,7 +6,6 @@ import {
   useRemoveMemberMutation,
   useUpdateMemberRoleMutation,
   useWorkspaceInvitations,
-  useResendInvitationMutation,
 } from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Trash2, Mail } from "lucide-react";
+import { UserPlus, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const roleLabels: Record<string, string> = {
@@ -43,12 +42,10 @@ export default function TeamSettingsPage() {
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
-  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const inviteMutation = useInviteMemberMutation();
   const removeMutation = useRemoveMemberMutation(user?.id);
   const roleMutation = useUpdateMemberRoleMutation(user?.id);
-  const resendMutation = useResendInvitationMutation();
   const { data: pendingInvitations = [], isLoading: invitationsLoading } = useWorkspaceInvitations(
     workspace?.id
   );
@@ -92,23 +89,6 @@ export default function TeamSettingsPage() {
       toast({ title: "Role updated" });
     } catch (err: any) {
       toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const handleResendInvitation = async (invitationId: string) => {
-    if (!workspace) return;
-    setResendingId(invitationId);
-    try {
-      await resendMutation.mutateAsync({ invitationId, workspaceId: workspace.id });
-      toast({ title: "Invitation resent", description: "The invitation email was sent again." });
-    } catch (err: any) {
-      toast({
-        title: "Failed to resend invitation",
-        description: err.message,
-        variant: "destructive",
-      });
-    } finally {
-      setResendingId(null);
     }
   };
 
@@ -201,15 +181,6 @@ export default function TeamSettingsPage() {
                         {new Date(inv.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleResendInvitation(inv.id)}
-                      disabled={resendingId !== null}
-                    >
-                      <Mail className="w-3.5 h-3.5 mr-1.5" />
-                      {resendingId === inv.id ? "Sending…" : "Resend email"}
-                    </Button>
                   </div>
                 ))}
               </div>
