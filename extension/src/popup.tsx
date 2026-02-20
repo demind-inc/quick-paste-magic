@@ -4,6 +4,7 @@ import { Storage } from "@plasmohq/storage";
 import "./popup.css";
 
 import logoUrl from "data-base64:~assets/logo.png";
+import { WEB_DASHBOARD_URL } from "./constants";
 
 const storage = new Storage({ area: "local" });
 
@@ -254,11 +255,13 @@ function SetupView({
 
 function MainView({
   snippets,
+  snippetsLoading,
   onSync,
   onLogout,
   onCopy,
 }: {
   snippets: Snippet[];
+  snippetsLoading: boolean;
   onSync: () => void;
   onLogout: () => void;
   onCopy: (s: Snippet) => void;
@@ -283,9 +286,25 @@ function MainView({
           <img src={logoUrl} alt="SnipDM" className="logo-img" />
           <span>SnipDM</span>
         </div>
-        <button id="syncBtn" title="Sync now" onClick={onSync}>
-          ↻
-        </button>
+        <div className="header-actions">
+          <a
+            href={WEB_DASHBOARD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-add-snippet"
+            title="Add snippet"
+          >
+            Add snippet
+          </a>
+          <button
+            id="syncBtn"
+            title="Sync now"
+            onClick={onSync}
+            disabled={snippetsLoading}
+          >
+            ↻
+          </button>
+        </div>
       </div>
       <div className="search-wrap">
         <input
@@ -295,10 +314,16 @@ function MainView({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
+          disabled={snippetsLoading}
         />
       </div>
       <div id="list" className="list">
-        {filtered.length === 0 ? (
+        {snippetsLoading ? (
+          <div className="snippets-loader" aria-label="Loading snippets">
+            <span className="snippets-spinner" />
+            <p className="empty">Loading snippets…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <p className="empty">No snippets found.</p>
         ) : (
           filtered.map((s, i) => (
@@ -314,8 +339,8 @@ function MainView({
                 <a
                   href={
                     s.id
-                      ? `https://snipdm.vercel.app/snippets/${s.id}/edit`
-                      : "https://snipdm.vercel.app/"
+                      ? `${WEB_DASHBOARD_URL}/snippets/${s.id}/edit`
+                      : `${WEB_DASHBOARD_URL}/`
                   }
                   target="_blank"
                   rel="noopener noreferrer"
@@ -358,6 +383,7 @@ export default function Popup() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
+  const [snippetsLoading, setSnippetsLoading] = useState(false);
   const [modalData, setModalData] = useState<{
     snippet: Snippet;
     vars: Placeholder[];
@@ -388,18 +414,31 @@ export default function Popup() {
   // Fetch snippets from API every time popup opens (when logged in)
   useEffect(() => {
     if (!session || !apiKey) return;
+    let cancelled = false;
+    setSnippetsLoading(true);
     const run = async () => {
-      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SYNC_NOW");
-      if (res?.sessionInvalid) {
-        await clearStoredAuth();
-        setSession(null);
-        setApiKey(null);
-        setSnippets([]);
-        return;
+      try {
+        const res = await sendMessage<{
+          ok?: boolean;
+          sessionInvalid?: boolean;
+        }>("SYNC_NOW");
+        if (cancelled) return;
+        if (res?.sessionInvalid) {
+          await clearStoredAuth();
+          setSession(null);
+          setApiKey(null);
+          setSnippets([]);
+          return;
+        }
+        await loadSnippets();
+      } finally {
+        if (!cancelled) setSnippetsLoading(false);
       }
-      await loadSnippets();
     };
     void run();
+    return () => {
+      cancelled = true;
+    };
   }, [session, apiKey]);
 
   const handleConnect = async ({
@@ -430,7 +469,10 @@ export default function Popup() {
     await setStoredAuth(sessionData, key);
     setSession(sessionData);
     setApiKey(key);
-    const setRes = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SET_SESSION");
+    const setRes = await sendMessage<{
+      ok?: boolean;
+      sessionInvalid?: boolean;
+    }>("SET_SESSION");
     if (setRes?.sessionInvalid) {
       await clearStoredAuth();
       setSession(null);
@@ -447,8 +489,11 @@ export default function Popup() {
   };
 
   const handleSync = async () => {
+    setSnippetsLoading(true);
     try {
-      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>("SYNC_NOW");
+      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>(
+        "SYNC_NOW"
+      );
       if (res?.sessionInvalid) {
         await clearStoredAuth();
         setSession(null);
@@ -464,6 +509,8 @@ export default function Popup() {
     } catch {
       show("Sync failed — showing cached");
       await loadSnippets();
+    } finally {
+      setSnippetsLoading(false);
     }
   };
 
@@ -558,6 +605,7 @@ export default function Popup() {
       ) : (
         <MainView
           snippets={snippets}
+          snippetsLoading={snippetsLoading}
           onSync={handleSync}
           onLogout={handleLogout}
           onCopy={(s) => handleInsert(s, "copy")}
