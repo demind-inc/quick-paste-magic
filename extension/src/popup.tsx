@@ -298,6 +298,7 @@ function MainView({
           </a>
           <button
             id="syncBtn"
+            className="sync-btn"
             title="Sync now"
             onClick={onSync}
             disabled={snippetsLoading}
