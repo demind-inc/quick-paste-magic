@@ -1,8 +1,37 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { queryKeys } from "@/lib/queryKeys";
 
+export interface WorkspaceInvitation {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: "editor" | "viewer";
+  invited_by: string;
+  created_at: string;
+  accepted_at: string | null;
+}
+
+export function useWorkspaceInvitations(workspaceId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.workspaceInvitations(workspaceId),
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const { data, error } = await supabase
+        .from("workspace_invitations")
+        .select("id, workspace_id, email, role, invited_by, created_at, accepted_at")
+        .eq("workspace_id", workspaceId)
+        .is("accepted_at", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as WorkspaceInvitation[];
+    },
+    enabled: !!workspaceId,
+  });
+}
+
 export function useInviteMemberMutation() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       workspaceId,
@@ -20,6 +49,36 @@ export function useInviteMemberMutation() {
       if (error) throw error;
       const err = (data as { error?: string })?.error;
       if (err) throw new Error(err);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workspaceInvitations(variables.workspaceId),
+      });
+    },
+  });
+}
+
+export function useResendInvitationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      invitationId,
+      workspaceId,
+    }: {
+      invitationId: string;
+      workspaceId: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke("resend-workspace-invitation", {
+        body: { invitationId },
+      });
+      if (error) throw error;
+      const err = (data as { error?: string })?.error;
+      if (err) throw new Error(err);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workspaceInvitations(variables.workspaceId),
+      });
     },
   });
 }

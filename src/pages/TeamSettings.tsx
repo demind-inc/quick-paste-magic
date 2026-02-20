@@ -5,6 +5,8 @@ import {
   useInviteMemberMutation,
   useRemoveMemberMutation,
   useUpdateMemberRoleMutation,
+  useWorkspaceInvitations,
+  useResendInvitationMutation,
 } from "@/hooks/useWorkspaceMutations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Trash2 } from "lucide-react";
+import { UserPlus, Trash2, Mail } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const roleLabels: Record<string, string> = {
@@ -41,10 +43,15 @@ export default function TeamSettingsPage() {
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const inviteMutation = useInviteMemberMutation();
   const removeMutation = useRemoveMemberMutation(user?.id);
   const roleMutation = useUpdateMemberRoleMutation(user?.id);
+  const resendMutation = useResendInvitationMutation();
+  const { data: pendingInvitations = [], isLoading: invitationsLoading } = useWorkspaceInvitations(
+    workspace?.id
+  );
 
   const handleInvite = async () => {
     if (!workspace || !user || !inviteEmail.trim()) return;
@@ -85,6 +92,23 @@ export default function TeamSettingsPage() {
       toast({ title: "Role updated" });
     } catch (err: any) {
       toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleResendInvitation = async (invitationId: string) => {
+    if (!workspace) return;
+    setResendingId(invitationId);
+    try {
+      await resendMutation.mutateAsync({ invitationId, workspaceId: workspace.id });
+      toast({ title: "Invitation resent", description: "The invitation email was sent again." });
+    } catch (err: any) {
+      toast({
+        title: "Failed to resend invitation",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -154,6 +178,45 @@ export default function TeamSettingsPage() {
           );
         })}
       </div>
+
+      {/* Pending invitations */}
+      {isOwner && (pendingInvitations.length > 0 || invitationsLoading) && (
+        <>
+          <Separator className="mb-6" />
+          <section className="mb-8">
+            <h2 className="text-sm font-semibold text-foreground mb-4">Pending invitations</h2>
+            {invitationsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <div className="space-y-2">
+                {pendingInvitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-muted/30"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{inv.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {roleLabels[inv.role]} · Invited{" "}
+                        {new Date(inv.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleResendInvitation(inv.id)}
+                      disabled={resendingId !== null}
+                    >
+                      <Mail className="w-3.5 h-3.5 mr-1.5" />
+                      {resendingId === inv.id ? "Sending…" : "Resend email"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
 
       {isOwner && (
         <>

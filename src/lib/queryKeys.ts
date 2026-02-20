@@ -6,4 +6,6 @@ export const queryKeys = {
   tags: (workspaceId: string | undefined) => ["tags", workspaceId] as const,
   folders: (workspaceId: string | undefined) => ["folders", workspaceId] as const,
   snippet: (snippetId: string | undefined) => ["snippet", snippetId] as const,
+  workspaceInvitations: (workspaceId: string | undefined) =>
+    ["workspaceInvitations", workspaceId] as const,
 };

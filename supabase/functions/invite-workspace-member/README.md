@@ -18,7 +18,7 @@ JWT is verified **inside** the function using the [Securing Edge Functions](http
 
 ## Secrets
 
-- **SITE_URL** – Optional. Base URL of your app (e.g. `https://yourapp.com`) for the invite redirect. Defaults to `http://localhost:5173` if unset.
+- **SITE_URL** – Optional. Base URL of your app (e.g. `https://yourapp.com`) for the invite redirect. Defaults to `http://localhost:8080` if unset.
 
 Set in dashboard: Project → Edge Functions → invite-workspace-member → Secrets, or:
 

@@ -15,10 +15,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface InviteBody {
-  workspaceId: string;
-  email: string;
-  role: "editor" | "viewer";
+interface ResendBody {
+  invitationId: string;
 }
 
 Deno.serve(async (req) => {
@@ -41,52 +39,40 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    const body = (await req.json()) as InviteBody;
-    const { workspaceId, email, role } = body;
-    if (!workspaceId || !email?.trim()) {
+    const body = (await req.json()) as ResendBody;
+    const { invitationId } = body;
+    if (!invitationId) {
       return Response.json(
-        { error: "workspaceId and email are required" },
+        { error: "invitationId is required" },
         { status: 400, headers: corsHeaders }
       );
     }
-    const normalizedEmail = email.trim().toLowerCase();
-    const inviteRole = role === "viewer" ? "viewer" : "editor";
+
+    const { data: invitation, error: fetchError } = await supabaseAdmin
+      .from("workspace_invitations")
+      .select("id, workspace_id, email, role, token")
+      .eq("id", invitationId)
+      .is("accepted_at", null)
+      .maybeSingle();
+
+    if (fetchError || !invitation) {
+      return Response.json(
+        { error: "Invitation not found or already accepted" },
+        { status: 404, headers: corsHeaders }
+      );
+    }
 
     const { data: memberRole, error: roleError } = await supabaseAdmin.rpc(
       "get_workspace_role",
       {
         _user_id: invitedBy,
-        _workspace_id: workspaceId,
+        _workspace_id: invitation.workspace_id,
       }
     );
     if (roleError || memberRole !== "owner") {
       return Response.json(
-        { error: "Only workspace owners can invite members" },
+        { error: "Only workspace owners can resend invitations" },
         { status: 403, headers: corsHeaders }
-      );
-    }
-
-    const { data: invitation, error: insertError } = await supabaseAdmin
-      .from("workspace_invitations")
-      .insert({
-        workspace_id: workspaceId,
-        email: normalizedEmail,
-        role: inviteRole,
-        invited_by: invitedBy,
-      })
-      .select("id, token")
-      .single();
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        return Response.json(
-          { error: "An invitation for this email already exists" },
-          { status: 409, headers: corsHeaders }
-        );
-      }
-      return Response.json(
-        { error: insertError.message },
-        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -94,30 +80,23 @@ Deno.serve(async (req) => {
       invitation.token
     }`;
     const { error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
+      await supabaseAdmin.auth.admin.inviteUserByEmail(invitation.email, {
         data: {
           workspace_invitation_id: invitation.id,
-          workspace_id: workspaceId,
-          role: inviteRole,
+          workspace_id: invitation.workspace_id,
+          role: invitation.role,
         },
         redirectTo,
       });
 
     if (inviteError) {
-      await supabaseAdmin
-        .from("workspace_invitations")
-        .delete()
-        .eq("id", invitation.id);
       return Response.json(
-        { error: inviteError.message || "Failed to send invitation email" },
+        { error: inviteError.message || "Failed to resend invitation email" },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    return Response.json(
-      { ok: true, invitationId: invitation.id },
-      { headers: corsHeaders }
-    );
+    return Response.json({ ok: true }, { headers: corsHeaders });
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "Internal server error" },
