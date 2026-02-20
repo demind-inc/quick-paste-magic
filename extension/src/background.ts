@@ -57,9 +57,7 @@ async function syncSnippets() {
 
     const { data: snippets, error } = await supabase
       .from("snippets")
-      .select(
-        "id,title,shortcut,body,shared_scope,snippet_tags(tag_id,tags(id,name,color))"
-      );
+      .select("id,title,shortcut,body,shared_scope,snippet_tags(tag_name,tag_color)");
 
     if (error) throw error;
 
@@ -72,20 +70,8 @@ async function syncSnippets() {
 }
 
 // Snippets are synced when the popup opens (SYNC_NOW), not on a timer.
-
-// ─── Keyboard command ────────────────────────────────────────────────────────
-
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === "open-snippet-picker") {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, { type: "OPEN_PICKER" });
-    }
-  }
-});
+// Keyboard shortcut (Ctrl+Shift+Space / Cmd+Shift+Space) is handled in the
+// content script so it works reliably without chrome.commands.
 
 // ─── Message handler ─────────────────────────────────────────────────────────
 
@@ -98,7 +84,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "SYNC_NOW") {
-    syncSnippets().then(() => sendResponse({ ok: true }));
+    syncSnippets()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        console.error("[SnipDM] SYNC_NOW failed:", err);
+        sendResponse({ ok: false });
+      });
     return true;
   }
 

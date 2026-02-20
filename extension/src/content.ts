@@ -341,7 +341,20 @@ document.addEventListener("focusout", () => {
   setTimeout(closeOverlay, 150)
 })
 
-// ─── Message from background (hotkey) ────────────────────────────────────────
+// ─── Open picker: keyboard shortcut (Plasmo-friendly) ───────────────────────────
+// Listen in content script so the shortcut works without relying on chrome.commands.
+
+document.addEventListener("keydown", (e) => {
+  if (!activeField) return
+  const isShortcut =
+    (e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "Space"
+  if (isShortcut) {
+    e.preventDefault()
+    renderOverlay("")
+  }
+})
+
+// ─── Message from background (e.g. from browser action or other triggers) ─────
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "OPEN_PICKER") {

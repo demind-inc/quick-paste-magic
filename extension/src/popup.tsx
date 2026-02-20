@@ -378,8 +378,15 @@ export default function Popup() {
   };
 
   const handleSync = async () => {
-    await sendMessage("SYNC_NOW");
-    void loadSnippets();
+    try {
+      const res = await sendMessage<{ ok?: boolean }>("SYNC_NOW");
+      await loadSnippets();
+      show(res?.ok !== false ? "Snippets updated" : "Sync failed — showing cached");
+    } catch (err) {
+      console.error("Sync failed:", err);
+      show("Sync failed — showing cached");
+      await loadSnippets();
+    }
   };
 
   const handleInsert = (snippet: Snippet, mode: "insert" | "copy") => {
