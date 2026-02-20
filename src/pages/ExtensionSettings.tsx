@@ -45,6 +45,18 @@ export default function ExtensionSettingsPage() {
 
   const isOwner = myRole === "owner";
 
+  const allowlistUnchanged = (() => {
+    const saved = workspace?.domain_allowlist ?? [];
+    const current = allowlistInput
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    if (saved.length !== current.length) return false;
+    const a = [...saved].sort().join(",");
+    const b = [...current].sort().join(",");
+    return a === b;
+  })();
+
   const copyApiKey = async () => {
     if (!workspace?.api_key) return;
     await navigator.clipboard.writeText(workspace.api_key);
@@ -158,7 +170,11 @@ export default function ExtensionSettingsPage() {
             />
           </div>
           {isOwner && (
-            <Button size="sm" onClick={saveAllowlist} disabled={allowlistMutation.isPending}>
+            <Button
+              size="sm"
+              onClick={saveAllowlist}
+              disabled={allowlistMutation.isPending || allowlistUnchanged}
+            >
               {allowlistMutation.isPending ? "Saving…" : "Save allowlist"}
             </Button>
           )}
