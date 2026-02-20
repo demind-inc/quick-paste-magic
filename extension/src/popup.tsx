@@ -282,6 +282,10 @@ export default function Popup() {
   };
 
   useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) {
+      setLoading(false);
+      return;
+    }
     chrome.storage.local.get(["session", "apiKey"], (res) => {
       setSession(res?.session ?? null);
       setApiKey(res?.apiKey ?? null);
