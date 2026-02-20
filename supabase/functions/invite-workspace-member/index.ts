@@ -2,11 +2,24 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- Deno npm: specifier; resolved at runtime
 // @ts-ignore
 import { createClient } from "npm:@supabase/supabase-js@2";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- Deno JSR specifier; resolved at runtime
+// @ts-ignore
+import * as jose from "jsr:@panva/jose@6";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
 };
+
+function getInvitedByFromJwt(token: string): Promise<string | null> {
+  const unverified = jose.decodeJwt(token);
+  const iss = unverified.iss;
+  if (!iss || typeof iss !== "string") return Promise.resolve(null);
+  const issuer = iss.startsWith("http") ? iss : `https://${iss}`;
+  const jwksUrl = issuer.replace(/\/$/, "") + "/.well-known/jwks.json";
+  const jwks = jose.createRemoteJWKSet(new URL(jwksUrl));
+  return jose.jwtVerify(token, jwks, { issuer }).then(({ payload }) => (payload.sub as string) ?? null).catch(() => null);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,19 +42,18 @@ Deno.serve(async (req) => {
     if (!authHeader) {
       return Response.json({ error: "Missing authorization header" }, { status: 401, headers: corsHeaders });
     }
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:5173";
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-    const { data: claimsData, error: claimsError } = await supabaseAdmin.auth.getClaims(token);
-    const invitedBy = (claimsData as { sub?: string })?.sub ?? (claimsData as { claims?: { sub?: string } })?.claims?.sub;
-    if (claimsError || !invitedBy) {
+    const invitedBy = await getInvitedByFromJwt(token);
+    if (!invitedBy) {
       return Response.json({ error: "Invalid or expired token" }, { status: 401, headers: corsHeaders });
     }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const body = (await req.json()) as InviteBody;
     const { workspaceId, email, role } = body;
