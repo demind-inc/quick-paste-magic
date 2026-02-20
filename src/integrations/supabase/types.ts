@@ -329,6 +329,10 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      ensure_profile: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
       get_workspace_role: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: Database["public"]["Enums"]["workspace_role"]

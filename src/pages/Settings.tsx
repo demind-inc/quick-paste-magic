@@ -13,7 +13,10 @@ export default function SettingsPage() {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
 
-  const { data: profileFullName } = useProfileQuery(user?.id);
+  const { data: profileFullName } = useProfileQuery(
+    user?.id,
+    user?.user_metadata?.full_name
+  );
   const [fullName, setFullName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
 

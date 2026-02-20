@@ -44,6 +44,7 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
 });
 
 async function fetchWorkspace(userId: string) {
+  await supabase.rpc("ensure_profile");
   const { data: memberData } = await supabase
     .from("workspace_members")
     .select("workspace_id, role")
