@@ -15,6 +15,7 @@ export const config: PlasmoCSConfig = {
 const TRIGGER_CHAR = "/"
 let activeField: HTMLElement | null = null
 let overlay: HTMLDivElement | null = null
+let actionButton: HTMLButtonElement | null = null
 let snippets: any[] = []
 let typedBuffer = ""
 let pickerOpen = false
@@ -53,6 +54,43 @@ function createOverlay() {
   `
   document.body.appendChild(el)
   return el
+}
+
+function createActionButton() {
+  const btn = document.createElement("button")
+  btn.id = "snipdm-action"
+  btn.type = "button"
+  btn.setAttribute("aria-label", "Insert SnipDM snippet")
+  btn.innerHTML = "✦"
+  btn.addEventListener("mousedown", (e) => {
+    // Prevent focus loss in inputs
+    e.preventDefault()
+  })
+  btn.addEventListener("click", () => {
+    if (!activeField) return
+    renderOverlay("")
+  })
+  document.body.appendChild(btn)
+  return btn
+}
+
+function positionActionButton(btn: HTMLButtonElement) {
+  if (!activeField) return
+  const rect = activeField.getBoundingClientRect()
+  const top = rect.top + 6
+  const left = rect.right - 28
+  btn.style.top = `${Math.max(6, Math.min(top, window.innerHeight - 34))}px`
+  btn.style.left = `${Math.max(6, Math.min(left, window.innerWidth - 34))}px`
+}
+
+function showActionButton() {
+  if (!actionButton) actionButton = createActionButton()
+  positionActionButton(actionButton)
+  actionButton.style.display = "flex"
+}
+
+function hideActionButton() {
+  if (actionButton) actionButton.style.display = "none"
 }
 
 function positionOverlay(el: HTMLDivElement) {
@@ -297,6 +335,7 @@ document.addEventListener(
 
     if (!isEditable) return
     activeField = field
+    showActionButton()
 
     const value =
       field.tagName === "DIV"
@@ -334,11 +373,27 @@ document.addEventListener("focusin", (e) => {
     (field.tagName === "DIV" && (field as HTMLDivElement).isContentEditable)
   ) {
     activeField = field
+    showActionButton()
+  }
+})
+
+window.addEventListener("scroll", () => {
+  if (actionButton && actionButton.style.display !== "none") {
+    positionActionButton(actionButton)
+  }
+})
+
+window.addEventListener("resize", () => {
+  if (actionButton && actionButton.style.display !== "none") {
+    positionActionButton(actionButton)
   }
 })
 
 document.addEventListener("focusout", () => {
-  setTimeout(closeOverlay, 150)
+  setTimeout(() => {
+    closeOverlay()
+    hideActionButton()
+  }, 150)
 })
 
 // ─── Open picker: keyboard shortcut (Plasmo-friendly) ───────────────────────────
@@ -359,6 +414,7 @@ document.addEventListener("keydown", (e) => {
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "OPEN_PICKER") {
     if (activeField) {
+      showActionButton()
       renderOverlay("")
     }
   }

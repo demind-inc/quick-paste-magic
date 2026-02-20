@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Storage } from "@plasmohq/storage";
 import "./popup.css";
 
+import logoUrl from "data-base64:~assets/logo.png";
+
 const storage = new Storage({ area: "local" });
 
 async function loadStoredAuth(): Promise<{
@@ -172,7 +174,10 @@ function SetupView({
 
   return (
     <div className="setup">
-      <div className="logo">⚡ SnipDM</div>
+      <div className="logo">
+        <img src={logoUrl} alt="SnipDM" className="logo-img" />
+        <span>SnipDM</span>
+      </div>
       <p className="subtitle">Paste your workspace API key to sync snippets.</p>
       <input
         type="password"
@@ -252,7 +257,10 @@ function MainView({
   return (
     <>
       <div className="header">
-        <div className="logo">⚡ SnipDM</div>
+        <div className="logo">
+          <img src={logoUrl} alt="SnipDM" className="logo-img" />
+          <span>SnipDM</span>
+        </div>
         <button id="syncBtn" title="Sync now" onClick={onSync}>
           ↻
         </button>
@@ -465,7 +473,10 @@ export default function Popup() {
   if (loading) {
     return (
       <div className="setup">
-        <div className="logo">⚡ SnipDM</div>
+        <div className="logo">
+          <img src={logoUrl} alt="SnipDM" className="logo-img" />
+          <span>SnipDM</span>
+        </div>
       </div>
     );
   }

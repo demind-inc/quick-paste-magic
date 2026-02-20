@@ -18,7 +18,7 @@
     "default_popup": "./popup.html"
   },
   "version": "1.0.0",
-  "name": "DEV | ",
+  "name": "",
   "background": {
     "service_worker": "./static/background/index.ts"
   },

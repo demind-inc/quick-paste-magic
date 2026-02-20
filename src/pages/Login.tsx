@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Zap } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -31,9 +30,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm px-6 py-10">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Zap className="w-4 h-4 text-primary-foreground" />
-          </div>
+          <img src="/logo.png" alt="SnipDM" className="w-8 h-8 rounded-lg object-contain" />
           <span className="font-semibold text-lg text-foreground">SnipDM</span>
         </div>
 

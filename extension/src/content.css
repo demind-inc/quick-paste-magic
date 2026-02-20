@@ -6,3 +6,24 @@
 #snipdm-overlay .snipdm-item:last-child {
   border-bottom: none !important;
 }
+
+#snipdm-action {
+  position: fixed;
+  z-index: 2147483647;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #0f172a;
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+}
+
+#snipdm-action:hover {
+  background: #111827;
+}
