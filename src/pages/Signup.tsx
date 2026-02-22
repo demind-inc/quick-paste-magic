@@ -7,10 +7,6 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SignupPage() {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(initialEmail);
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -18,6 +14,11 @@ export default function SignupPage() {
   const nextParam = rawNext ? decodeURIComponent(rawNext) : null;
   const emailParam = new URLSearchParams(location.search).get("email");
   const initialEmail = emailParam ? decodeURIComponent(emailParam) : "";
+
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
