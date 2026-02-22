@@ -2,7 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +19,10 @@ import { queryKeys } from "@/lib/queryKeys";
 
 function useInviteToken() {
   const { search } = useLocation();
-  return useMemo(() => new URLSearchParams(search).get("token")?.trim() ?? "", [search]);
+  return useMemo(
+    () => new URLSearchParams(search).get("token")?.trim() ?? "",
+    [search]
+  );
 }
 
 export default function AcceptInvitePage() {
@@ -20,14 +32,29 @@ export default function AcceptInvitePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [status, setStatus] = useState<"idle" | "accepting" | "accepted" | "error">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "accepting" | "accepted" | "error" | "done"
+  >("idle");
   const [message, setMessage] = useState<string>("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [settingPassword, setSettingPassword] = useState(false);
 
   useEffect(() => {
-    if (!user?.id || !token || status !== "idle") return;
+    if (!token) return;
+    if (!loading && !user) {
+      navigate(
+        `/login?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`,
+        { replace: true }
+      );
+      return;
+    }
+    if (!user?.id || status !== "idle") return;
     const acceptInvite = async () => {
       setStatus("accepting");
-      const { data, error } = await supabase.rpc("accept_workspace_invite", { p_token: token });
+      const { data, error } = await supabase.rpc("accept_workspace_invite", {
+        p_token: token,
+      });
       if (error) {
         setStatus("error");
         setMessage(error.message);
@@ -37,38 +64,76 @@ export default function AcceptInvitePage() {
       if (workspaceId) {
         localStorage.setItem(`activeWorkspace:${user.id}`, workspaceId);
       }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(user.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaceMembers(workspaceId ?? undefined) });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workspaces(user.id),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.workspaceMembers(workspaceId ?? undefined),
+      });
       setStatus("accepted");
       toast({ title: "Workspace joined" });
-      navigate("/snippets", { replace: true });
     };
     acceptInvite();
-  }, [user?.id, token, status, navigate, toast, queryClient]);
+  }, [loading, user, user?.id, token, status, navigate, toast, queryClient]);
 
-  const nextParam = encodeURIComponent(`/accept-invite?token=${token}`);
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "At least 6 characters required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast({
+        title: "Passwords don't match",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSettingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setSettingPassword(false);
+    if (error) {
+      toast({
+        title: "Failed to set password",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({ title: "Password set" });
+    setStatus("done");
+    navigate("/snippets", { replace: true });
+  };
+
+  const handleSkipPassword = () => {
+    setStatus("done");
+    navigate("/snippets", { replace: true });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Accept invitation</CardTitle>
-          <CardDescription>Join the workspace you were invited to.</CardDescription>
+          <CardDescription>
+            Join the workspace you were invited to.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {!token && (
-            <p className="text-sm text-muted-foreground">Missing or invalid invite token.</p>
+            <p className="text-sm text-muted-foreground">
+              Missing or invalid invite token.
+            </p>
           )}
-          {token && loading && (
+          {token && (loading || !user) && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              Checking your session…
+              {loading ? "Checking your session…" : "Redirecting to sign in…"}
             </div>
-          )}
-          {token && !loading && !user && (
-            <p className="text-sm text-muted-foreground">
-              Please sign in or create an account with the invited email to accept this invitation.
-            </p>
           )}
           {token && user && status === "accepting" && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -77,26 +142,66 @@ export default function AcceptInvitePage() {
             </div>
           )}
           {status === "error" && (
-            <p className="text-sm text-destructive">{message || "Failed to accept invitation."}</p>
+            <p className="text-sm text-destructive">
+              {message || "Failed to accept invitation."}
+            </p>
+          )}
+          {status === "accepted" && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Set a password so you can sign in with email and password next time.
+              </p>
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Min. 6 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    minLength={6}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="confirmPassword">Confirm password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="Repeat password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    minLength={6}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    disabled={settingPassword || !password || password !== confirmPassword}
+                    className="flex-1"
+                  >
+                    {settingPassword ? "Setting…" : "Set password"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleSkipPassword}
+                    disabled={settingPassword}
+                  >
+                    Skip
+                  </Button>
+                </div>
+              </form>
+            </div>
           )}
         </CardContent>
-        <CardFooter className="flex gap-2">
-          {!loading && !user && token && (
-            <>
-              <Button asChild className="flex-1">
-                <Link to={`/login?next=${nextParam}`}>Sign in</Link>
-              </Button>
-              <Button asChild variant="outline" className="flex-1">
-                <Link to={`/signup?next=${nextParam}`}>Create account</Link>
-              </Button>
-            </>
-          )}
-          {!token && (
+        {!token && (
+          <CardFooter>
             <Button asChild className="w-full">
               <Link to="/login">Back to login</Link>
             </Button>
-          )}
-        </CardFooter>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );

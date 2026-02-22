@@ -332,6 +332,10 @@ export type Database = {
         Args: { p_token: string }
         Returns: string
       }
+      get_workspace_invite_email: {
+        Args: { p_token: string }
+        Returns: string | null
+      }
       create_workspace: {
         Args: { p_name: string }
         Returns: string

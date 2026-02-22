@@ -71,7 +71,10 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Don't have an account?{" "}
-          <Link to="/signup" className="text-foreground font-medium hover:underline">
+          <Link
+            to={nextParam ? `/signup?next=${encodeURIComponent(nextParam)}` : "/signup"}
+            className="text-foreground font-medium hover:underline"
+          >
             Sign up
           </Link>
         </p>
