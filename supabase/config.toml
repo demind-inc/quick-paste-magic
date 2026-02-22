@@ -7,3 +7,6 @@ verify_jwt = false
 
 [functions.resend-workspace-invitation]
 verify_jwt = false
+
+[functions.get-my-workspaces]
+verify_jwt = false

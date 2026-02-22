@@ -1,5 +1,7 @@
 export const queryKeys = {
-  workspace: (userId: string | undefined) => ["workspace", userId] as const,
+  workspaces: (userId: string | undefined) => ["workspaces", userId] as const,
+  workspaceMembers: (workspaceId: string | undefined) =>
+    ["workspaceMembers", workspaceId] as const,
   profile: (userId: string | undefined) => ["profile", userId] as const,
   snippets: (workspaceId: string | undefined, sortKey?: string) =>
     ["snippets", workspaceId, sortKey] as const,

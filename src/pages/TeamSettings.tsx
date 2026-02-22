@@ -44,11 +44,10 @@ export default function TeamSettingsPage() {
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
 
   const inviteMutation = useInviteMemberMutation();
-  const removeMutation = useRemoveMemberMutation(user?.id);
-  const roleMutation = useUpdateMemberRoleMutation(user?.id);
-  const { data: pendingInvitations = [], isLoading: invitationsLoading } = useWorkspaceInvitations(
-    workspace?.id
-  );
+  const removeMutation = useRemoveMemberMutation(user?.id, workspace?.id);
+  const roleMutation = useUpdateMemberRoleMutation(user?.id, workspace?.id);
+  const { data: pendingInvitations = [], isLoading: invitationsLoading } =
+    useWorkspaceInvitations(workspace?.id);
 
   const handleInvite = async () => {
     if (!workspace || !user || !inviteEmail.trim()) return;
@@ -59,7 +58,10 @@ export default function TeamSettingsPage() {
         role: inviteRole,
         invitedBy: user.id,
       });
-      toast({ title: "Invitation sent", description: `Invited ${inviteEmail}` });
+      toast({
+        title: "Invitation sent",
+        description: `Invited ${inviteEmail}`,
+      });
       setInviteEmail("");
     } catch (err: any) {
       toast({
@@ -79,33 +81,49 @@ export default function TeamSettingsPage() {
       await removeMutation.mutateAsync(memberId);
       toast({ title: "Member removed" });
     } catch (err: any) {
-      toast({ title: "Failed to remove member", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to remove member",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
-  const handleRoleChange = async (memberId: string, role: "editor" | "viewer" | "owner") => {
+  const handleRoleChange = async (
+    memberId: string,
+    role: "editor" | "viewer" | "owner"
+  ) => {
     try {
       await roleMutation.mutateAsync({ memberId, role });
       toast({ title: "Role updated" });
     } catch (err: any) {
-      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to update role",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
   const isOwner = myRole === "owner";
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-8">
-      <h1 className="text-lg font-semibold text-foreground mb-6">Team members</h1>
+    <div className="min-w-[550px] max-w-xl mx-auto px-6 py-8">
+      <h1 className="text-lg font-semibold text-foreground mb-6">
+        Team members
+      </h1>
 
       {/* Current members */}
       <div className="space-y-2 mb-8">
         {members.map((member) => {
           const isMe = member.user_id === user?.id;
-          const initials =
-            (member.profiles?.full_name ?? member.profiles?.email ?? "?")
-              .slice(0, 2)
-              .toUpperCase();
+          const initials = (
+            member.profiles?.full_name ??
+            member.profiles?.email ??
+            "?"
+          )
+            .slice(0, 2)
+            .toUpperCase();
           return (
             <div
               key={member.id}
@@ -119,10 +137,17 @@ export default function TeamSettingsPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
                   {member.profiles?.full_name || member.profiles?.email}
-                  {isMe && <span className="text-muted-foreground font-normal"> (you)</span>}
+                  {isMe && (
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      (you)
+                    </span>
+                  )}
                 </p>
                 {member.profiles?.full_name && (
-                  <p className="text-xs text-muted-foreground truncate">{member.profiles.email}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {member.profiles.email}
+                  </p>
                 )}
               </div>
               {isOwner && !isMe ? (
@@ -140,7 +165,10 @@ export default function TeamSettingsPage() {
                   </SelectContent>
                 </Select>
               ) : (
-                <Badge variant={roleBadgeVariant[member.role]} className="text-xs">
+                <Badge
+                  variant={roleBadgeVariant[member.role]}
+                  className="text-xs"
+                >
                   {roleLabels[member.role]}
                 </Badge>
               )}
@@ -164,7 +192,9 @@ export default function TeamSettingsPage() {
         <>
           <Separator className="mb-6" />
           <section className="mb-8">
-            <h2 className="text-sm font-semibold text-foreground mb-4">Pending invitations</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-4">
+              Pending invitations
+            </h2>
             {invitationsLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : (
@@ -175,7 +205,9 @@ export default function TeamSettingsPage() {
                     className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-muted/30"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{inv.email}</p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {inv.email}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {roleLabels[inv.role]} · Invited{" "}
                         {new Date(inv.created_at).toLocaleDateString()}
@@ -193,7 +225,9 @@ export default function TeamSettingsPage() {
         <>
           <Separator className="mb-6" />
           <section>
-            <h2 className="text-sm font-semibold text-foreground mb-4">Invite a member</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-4">
+              Invite a member
+            </h2>
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Email address</Label>
@@ -206,7 +240,10 @@ export default function TeamSettingsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Role</Label>
-                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as any)}>
+                <Select
+                  value={inviteRole}
+                  onValueChange={(v) => setInviteRole(v as any)}
+                >
                   <SelectTrigger className="w-40 h-9">
                     <SelectValue />
                   </SelectTrigger>
@@ -216,7 +253,11 @@ export default function TeamSettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button size="sm" onClick={handleInvite} disabled={inviteMutation.isPending || !inviteEmail.trim()}>
+              <Button
+                size="sm"
+                onClick={handleInvite}
+                disabled={inviteMutation.isPending || !inviteEmail.trim()}
+              >
                 <UserPlus className="w-3.5 h-3.5 mr-1.5" />
                 {inviteMutation.isPending ? "Inviting…" : "Send invitation"}
               </Button>

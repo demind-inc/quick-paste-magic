@@ -34,7 +34,7 @@ export default function CreateWorkspacePage() {
       });
       if (error) throw error;
       if (!workspaceId) throw new Error("No workspace id returned");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.workspace(user.id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(user.id) });
       await refetch();
       toast({ title: "Workspace created" });
       navigate("/snippets");

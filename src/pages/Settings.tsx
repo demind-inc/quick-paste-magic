@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useProfileQuery, useUpdateProfileMutation, useUpdateWorkspaceMutation } from "@/hooks/useProfile";
+import {
+  useProfileQuery,
+  useUpdateProfileMutation,
+  useUpdateWorkspaceMutation,
+} from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,22 +43,33 @@ export default function SettingsPage() {
       await updateProfile.mutateAsync(fullName);
       toast({ title: "Profile updated" });
     } catch (err: any) {
-      toast({ title: "Failed to save profile", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to save profile",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
   const saveWorkspace = async () => {
     if (!workspace) return;
     try {
-      await updateWorkspace.mutateAsync({ workspaceId: workspace.id, name: workspaceName });
+      await updateWorkspace.mutateAsync({
+        workspaceId: workspace.id,
+        name: workspaceName,
+      });
       toast({ title: "Workspace updated" });
     } catch (err: any) {
-      toast({ title: "Failed to update workspace", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to update workspace",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-8">
+    <div className="min-w-[550px] max-w-xl mx-auto px-6 py-8">
       <h1 className="text-lg font-semibold text-foreground mb-6">Settings</h1>
 
       {/* Profile */}
@@ -71,7 +86,11 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>
-            <Input value={user?.email ?? ""} disabled className="text-muted-foreground" />
+            <Input
+              value={user?.email ?? ""}
+              disabled
+              className="text-muted-foreground"
+            />
           </div>
           <Button
             size="sm"
@@ -87,7 +106,9 @@ export default function SettingsPage() {
 
       {/* Workspace */}
       <section>
-        <h2 className="text-sm font-semibold text-foreground mb-4">Workspace</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-4">
+          Workspace
+        </h2>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>Workspace name</Label>

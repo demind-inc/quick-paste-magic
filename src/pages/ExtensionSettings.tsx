@@ -59,7 +59,11 @@ export default function ExtensionSettingsPage() {
       await regenerateMutation.mutateAsync(workspace.id);
       toast({ title: "API key regenerated" });
     } catch (err: any) {
-      toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to regenerate key",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -70,29 +74,43 @@ export default function ExtensionSettingsPage() {
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean);
     try {
-      await allowlistMutation.mutateAsync({ workspaceId: workspace.id, domainAllowlist: parsed });
+      await allowlistMutation.mutateAsync({
+        workspaceId: workspace.id,
+        domainAllowlist: parsed,
+      });
       toast({ title: "Domain allowlist saved" });
     } catch (err: any) {
-      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to save",
+        description: err.message,
+        variant: "destructive",
+      });
     }
   };
 
   const maskedKey = workspace?.api_key
     ? showKey
       ? workspace.api_key
-      : workspace.api_key.slice(0, 8) + "•".repeat(24) + workspace.api_key.slice(-4)
+      : workspace.api_key.slice(0, 8) +
+        "•".repeat(24) +
+        workspace.api_key.slice(-4)
     : "";
 
   return (
-    <div className="max-w-xl mx-auto px-6 py-8">
-      <h1 className="text-lg font-semibold text-foreground mb-2">Chrome Extension</h1>
+    <div className="min-w-[550px] max-w-xl mx-auto px-6 py-8">
+      <h1 className="text-lg font-semibold text-foreground mb-2">
+        Chrome Extension
+      </h1>
       <p className="text-sm text-muted-foreground mb-8">
-        Connect the SnipDM Chrome extension to your workspace using the API key below.
+        Connect the SnipDM Chrome extension to your workspace using the API key
+        below.
       </p>
 
       {/* API Key */}
       <section>
-        <h2 className="text-sm font-semibold text-foreground mb-4">Workspace API key</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-4">
+          Workspace API key
+        </h2>
         <div className="flex items-center gap-2">
           <div className="flex-1 font-mono text-sm bg-muted border border-border rounded-md px-3 py-2 text-muted-foreground select-all overflow-hidden text-ellipsis whitespace-nowrap">
             {maskedKey}
@@ -103,10 +121,23 @@ export default function ExtensionSettingsPage() {
             className="h-9 w-9 flex-shrink-0"
             onClick={() => setShowKey(!showKey)}
           >
-            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showKey ? (
+              <EyeOff className="w-4 h-4" />
+            ) : (
+              <Eye className="w-4 h-4" />
+            )}
           </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0" onClick={copyApiKey}>
-            {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 flex-shrink-0"
+            onClick={copyApiKey}
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-green-600" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
           </Button>
         </div>
         {isOwner && (
@@ -122,7 +153,8 @@ export default function ExtensionSettingsPage() {
           </Button>
         )}
         <p className="text-xs text-muted-foreground mt-2">
-          Keep this key secret. Paste it in the extension settings to sync your snippets.
+          Keep this key secret. Paste it in the extension settings to sync your
+          snippets.
         </p>
       </section>
 
@@ -130,9 +162,12 @@ export default function ExtensionSettingsPage() {
 
       {/* Domain allowlist */}
       <section>
-        <h2 className="text-sm font-semibold text-foreground mb-1">Domain allowlist</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-1">
+          Domain allowlist
+        </h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Only show the SnipDM snipping button on these domains. Leave empty to enable all domains.
+          Only show the SnipDM snipping button on these domains. Leave empty to
+          enable all domains.
         </p>
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -173,11 +208,15 @@ export default function ExtensionSettingsPage() {
 
       {/* Extension install info */}
       <section>
-        <h2 className="text-sm font-semibold text-foreground mb-2">Install the extension</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-2">
+          Install the extension
+        </h2>
         <p className="text-sm text-muted-foreground">
           The SnipDM Chrome extension source is scaffolded in the{" "}
-          <code className="bg-muted px-1 rounded font-mono text-xs">extension/</code> folder of this
-          project. Load it in Chrome via{" "}
+          <code className="bg-muted px-1 rounded font-mono text-xs">
+            extension/
+          </code>{" "}
+          folder of this project. Load it in Chrome via{" "}
           <strong>chrome://extensions → Load unpacked</strong>.
         </p>
       </section>

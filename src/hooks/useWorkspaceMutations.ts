@@ -92,7 +92,7 @@ export function useResendInvitationMutation() {
   });
 }
 
-export function useRemoveMemberMutation(userId: string | undefined) {
+export function useRemoveMemberMutation(userId: string | undefined, workspaceId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (memberId: string) => {
@@ -103,12 +103,13 @@ export function useRemoveMemberMutation(userId: string | undefined) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaceMembers(workspaceId) });
     },
   });
 }
 
-export function useUpdateMemberRoleMutation(userId: string | undefined) {
+export function useUpdateMemberRoleMutation(userId: string | undefined, workspaceId: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: "editor" | "viewer" | "owner" }) => {
@@ -119,7 +120,8 @@ export function useUpdateMemberRoleMutation(userId: string | undefined) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaceMembers(workspaceId) });
     },
   });
 }
@@ -138,7 +140,7 @@ export function useRegenerateApiKeyMutation(userId: string | undefined) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(userId) });
     },
   });
 }
@@ -157,7 +159,7 @@ export function useUpdateDomainAllowlistMutation(userId: string | undefined) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(userId) });
     },
   });
 }

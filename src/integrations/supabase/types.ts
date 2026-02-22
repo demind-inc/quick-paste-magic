@@ -328,6 +328,10 @@ export type Database = {
       }
     }
     Functions: {
+      accept_workspace_invite: {
+        Args: { p_token: string }
+        Returns: string
+      }
       create_workspace: {
         Args: { p_name: string }
         Returns: string
@@ -335,6 +339,10 @@ export type Database = {
       ensure_profile: {
         Args: Record<string, never>
         Returns: undefined
+      }
+      get_workspace_member_profiles: {
+        Args: { p_workspace_id: string; p_user_ids: string[] }
+        Returns: { id: string; full_name: string | null; email: string; avatar_url: string | null }[]
       }
       get_workspace_role: {
         Args: { _user_id: string; _workspace_id: string }

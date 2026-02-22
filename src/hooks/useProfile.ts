@@ -65,7 +65,7 @@ export function useUpdateWorkspaceMutation(userId: string | undefined) {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspace(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(userId) });
     },
   });
 }
