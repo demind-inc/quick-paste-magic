@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,12 +7,18 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SignupPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { toast } = useToast();
+  const rawNext = new URLSearchParams(location.search).get("next");
+  const nextParam = rawNext ? decodeURIComponent(rawNext) : null;
+  const emailParam = new URLSearchParams(location.search).get("email");
+  const initialEmail = emailParam ? decodeURIComponent(emailParam) : "";
+
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { toast } = useToast();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +57,7 @@ export default function SignupPage() {
       description:
         "We sent you a confirmation link. After confirming, you can sign in.",
     });
-    navigate("/login");
+    navigate(nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login");
   };
 
   return (
@@ -113,7 +119,7 @@ export default function SignupPage() {
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link
-            to="/login"
+            to={nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"}
             className="text-foreground font-medium hover:underline"
           >
             Sign in

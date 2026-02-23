@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  const rawNext = new URLSearchParams(location.search).get("next");
+  const nextParam = rawNext ? decodeURIComponent(rawNext) : null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +24,7 @@ export default function LoginPage() {
     if (error) {
       toast({ title: "Login failed", description: error.message, variant: "destructive" });
     } else {
-      navigate("/snippets");
+      navigate(nextParam || "/snippets");
     }
   };
 
@@ -68,7 +71,10 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Don't have an account?{" "}
-          <Link to="/signup" className="text-foreground font-medium hover:underline">
+          <Link
+            to={nextParam ? `/signup?next=${encodeURIComponent(nextParam)}` : "/signup"}
+            className="text-foreground font-medium hover:underline"
+          >
             Sign up
           </Link>
         </p>

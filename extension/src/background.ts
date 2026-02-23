@@ -62,9 +62,23 @@ async function clearStoredAuth(): Promise<void> {
   await storage.remove("session");
   await storage.remove("apiKey");
   await storage.remove("domainAllowlist");
+  await storage.remove("activeWorkspaceId");
 }
 
 // ─── Snippet sync ────────────────────────────────────────────────────────────
+
+async function resolveWorkspaceByApiKey(
+  client: ReturnType<typeof createClient>,
+  apiKey: string
+) {
+  const { data, error } = await client
+    .from("workspaces")
+    .select("id, domain_allowlist")
+    .eq("api_key", apiKey)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
 
 async function syncSnippets() {
   const client = getSupabaseClient();
@@ -86,41 +100,27 @@ async function syncSnippets() {
       throw sessionError;
     }
 
+    const workspace = await resolveWorkspaceByApiKey(client, apiKey);
+    if (!workspace?.id) {
+      await storage.set("snippets", []);
+      await storage.remove("domainAllowlist");
+      await storage.remove("activeWorkspaceId");
+      return { invalidApiKey: true };
+    }
+
     const { data: snippets, error } = await client
       .from("snippets")
       .select(
         "id,title,shortcut,body,shared_scope,snippet_tags(tag_name,tag_color)"
-      );
+      )
+      .eq("workspace_id", workspace.id);
 
     if (error) throw error;
 
     await storage.set("snippets", snippets);
     await storage.set("lastSynced", Date.now());
-
-    try {
-      const { data: userData } = await client.auth.getUser();
-      const userId = userData?.user?.id;
-      if (userId) {
-        const { data: memberData } = await client
-          .from("workspace_members")
-          .select("workspace_id")
-          .eq("user_id", userId)
-          .limit(1)
-          .maybeSingle();
-        const workspaceId = memberData?.workspace_id;
-        if (workspaceId) {
-          const { data: workspaceData } = await client
-            .from("workspaces")
-            .select("domain_allowlist")
-            .eq("id", workspaceId)
-            .maybeSingle();
-          const allowlist = workspaceData?.domain_allowlist ?? [];
-          await storage.set("domainAllowlist", allowlist);
-        }
-      }
-    } catch {
-      // Ignore allowlist sync failures
-    }
+    await storage.set("activeWorkspaceId", workspace.id);
+    await storage.set("domainAllowlist", workspace.domain_allowlist ?? []);
 
     return snippets;
   } catch {
@@ -147,6 +147,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then((result) => {
         if (result && "sessionInvalid" in result && result.sessionInvalid) {
           sendResponse({ ok: false, sessionInvalid: true });
+        } else if (result && "invalidApiKey" in result && result.invalidApiKey) {
+          sendResponse({ ok: false, invalidApiKey: true });
         } else {
           sendResponse({ ok: true });
         }
@@ -160,6 +162,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then((result) => {
         if (result && "sessionInvalid" in result && result.sessionInvalid) {
           sendResponse({ ok: false, sessionInvalid: true });
+        } else if (result && "invalidApiKey" in result && result.invalidApiKey) {
+          sendResponse({ ok: false, invalidApiKey: true });
         } else {
           sendResponse({ ok: true });
         }

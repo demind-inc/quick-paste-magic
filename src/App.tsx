@@ -17,6 +17,7 @@ import SettingsPage from "./pages/Settings";
 import TeamSettingsPage from "./pages/TeamSettings";
 import ExtensionSettingsPage from "./pages/ExtensionSettings";
 import NotFound from "./pages/NotFound";
+import AcceptInvitePage from "./pages/AcceptInvite";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
             {/* Protected: create workspace when user has none (no sidebar) */}
             <Route

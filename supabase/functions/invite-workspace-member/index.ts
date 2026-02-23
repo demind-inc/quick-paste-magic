@@ -2,23 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment -- Deno npm: specifier; resolved at runtime
 // @ts-ignore
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getUserIdFromRequest } from "../_shared/jwt.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
   serve: (handler: (req: Request) => Response | Promise<Response>) => void;
 };
-
-/** Resolves user id from JWT using Supabase Auth (see https://supabase.com/docs/guides/functions/auth). */
-async function getInvitedByFromToken(
-  token: string,
-  supabaseUrl: string,
-  publishableKey: string
-): Promise<string | null> {
-  const supabase = createClient(supabaseUrl, publishableKey);
-  const { data, error } = await supabase.auth.getClaims(token);
-  if (error || !data?.claims?.sub) return null;
-  return data.claims.sub as string;
-}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,43 +27,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const invitedBy = await getUserIdFromRequest(req);
+    if (!invitedBy) {
       return Response.json(
-        { error: "Missing authorization header" },
+        { error: "Missing or invalid authorization" },
         { status: 401, headers: corsHeaders }
       );
     }
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const publishableKey =
-      Deno.env.get("SB_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
-    const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:5173";
-
-    if (!publishableKey) {
-      return Response.json(
-        {
-          error:
-            "Server misconfiguration: set SB_PUBLISHABLE_KEY (or SUPABASE_ANON_KEY) for JWT verification",
-        },
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    const invitedBy = await getInvitedByFromToken(
-      token,
-      supabaseUrl,
-      publishableKey
-    );
-
-    if (!invitedBy) {
-      return Response.json(
-        { error: "Invalid or expired token" },
-        { status: 401, headers: corsHeaders }
-      );
-    }
+    const siteUrl = Deno.env.get("SITE_URL") ?? "http://localhost:8080";
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
@@ -103,7 +66,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: invitation, error: insertError } = await supabaseAdmin
+    let invitation: { id: string; token: string };
+    let existingInvitation = false;
+
+    const { data: insertedInvitation, error: insertError } = await supabaseAdmin
       .from("workspace_invitations")
       .insert({
         workspace_id: workspaceId,
@@ -116,35 +82,155 @@ Deno.serve(async (req) => {
 
     if (insertError) {
       if (insertError.code === "23505") {
+        const { data: existing, error: fetchErr } = await supabaseAdmin
+          .from("workspace_invitations")
+          .select("id, token")
+          .eq("workspace_id", workspaceId)
+          .eq("email", normalizedEmail)
+          .is("accepted_at", null)
+          .maybeSingle();
+        if (fetchErr || !existing) {
+          return Response.json(
+            { error: "An invitation for this email already exists" },
+            { status: 409, headers: corsHeaders }
+          );
+        }
+        invitation = existing;
+        existingInvitation = true;
+      } else {
         return Response.json(
-          { error: "An invitation for this email already exists" },
-          { status: 409, headers: corsHeaders }
+          { error: insertError.message },
+          { status: 400, headers: corsHeaders }
         );
       }
-      return Response.json(
-        { error: insertError.message },
-        { status: 400, headers: corsHeaders }
-      );
+    } else {
+      invitation = insertedInvitation!;
     }
 
     const redirectTo = `${siteUrl.replace(/\/$/, "")}/accept-invite?token=${
       invitation.token
     }`;
-    const { error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-        data: {
-          workspace_invitation_id: invitation.id,
-          workspace_id: workspaceId,
-          role: inviteRole,
-        },
-        redirectTo,
-      });
+    const inviteData = {
+      workspace_invitation_id: invitation.id,
+      workspace_id: workspaceId,
+      role: inviteRole,
+    };
 
-    if (inviteError) {
+    const { data: emailExists, error: existsError } = await supabaseAdmin.rpc(
+      "auth_user_exists_by_email",
+      { p_email: normalizedEmail }
+    );
+    if (existsError) {
+      if (!existingInvitation) {
+        await supabaseAdmin
+          .from("workspace_invitations")
+          .delete()
+          .eq("id", invitation.id);
+      }
+      return Response.json(
+        { error: existsError.message || "Failed to check user" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (!existingInvitation) {
       await supabaseAdmin
         .from("workspace_invitations")
-        .delete()
+        .update({ invitee_was_existing_user: emailExists })
         .eq("id", invitation.id);
+    }
+
+    if (emailExists) {
+      const { data: linkData, error: linkError } =
+        await supabaseAdmin.auth.admin.generateLink({
+          type: "magiclink",
+          email: normalizedEmail,
+          options: { redirectTo },
+        });
+      if (linkError || !linkData?.properties?.action_link) {
+        if (!existingInvitation) {
+          await supabaseAdmin
+            .from("workspace_invitations")
+            .delete()
+            .eq("id", invitation.id);
+        }
+        return Response.json(
+          {
+            error: linkError?.message || "Failed to generate invitation link",
+          },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      const resendFrom =
+        Deno.env.get("RESEND_FROM") ?? "SnipDM <snipdm@demind-inc.com>";
+      if (resendKey) {
+        const actionLink = linkData.properties.action_link as string;
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resendKey}`,
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: [normalizedEmail],
+            subject: "You're invited to join a workspace",
+            html: `You've been invited to join a workspace. <a href="${actionLink}">Accept the invitation</a>.`,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (!existingInvitation) {
+            await supabaseAdmin
+              .from("workspace_invitations")
+              .delete()
+              .eq("id", invitation.id);
+          }
+          return Response.json(
+            {
+              error:
+                (err as { message?: string })?.message ||
+                "Failed to send invitation email",
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+      } else {
+        return Response.json(
+          {
+            ok: true,
+            invitationId: invitation.id,
+            existingUser: true,
+            isNewUser: false,
+            token: invitation.token,
+          },
+          { headers: corsHeaders }
+        );
+      }
+      return Response.json(
+        {
+          ok: true,
+          invitationId: invitation.id,
+          existingUser: true,
+          isNewUser: false,
+        },
+        { headers: corsHeaders }
+      );
+    }
+
+    const { error: inviteError } =
+      await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
+        data: inviteData,
+        redirectTo,
+      });
+    if (inviteError) {
+      if (!existingInvitation) {
+        await supabaseAdmin
+          .from("workspace_invitations")
+          .delete()
+          .eq("id", invitation.id);
+      }
       return Response.json(
         { error: inviteError.message || "Failed to send invitation email" },
         { status: 400, headers: corsHeaders }
@@ -152,7 +238,11 @@ Deno.serve(async (req) => {
     }
 
     return Response.json(
-      { ok: true, invitationId: invitation.id },
+      {
+        ok: true,
+        invitationId: invitation.id,
+        isNewUser: true,
+      },
       { headers: corsHeaders }
     );
   } catch (e) {

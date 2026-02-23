@@ -1,1 +1,12 @@
 project_id = "dhbmjsdaiyvuydxojoef"
+
+# Skip platform JWT check so we verify inside the function with new JWT Signing Keys.
+# See: https://supabase.com/docs/guides/functions/auth
+[functions.invite-workspace-member]
+verify_jwt = false
+
+[functions.resend-workspace-invitation]
+verify_jwt = false
+
+[functions.get-my-workspaces]
+verify_jwt = false

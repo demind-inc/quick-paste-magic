@@ -14,8 +14,18 @@ import {
   type SnippetTag,
 } from "@/hooks/useSnippets";
 import {
-  Plus, Search, Copy, Pencil, Trash2, Globe, Lock,
-  ArrowUpDown, Clock, Hash, BarChart2, Folder,
+  Plus,
+  Search,
+  Copy,
+  Pencil,
+  Trash2,
+  Globe,
+  Lock,
+  ArrowUpDown,
+  Clock,
+  Hash,
+  BarChart2,
+  Folder,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,25 +70,38 @@ export default function SnippetsPage() {
 
   const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [scopeFilter, setScopeFilter] = useState<"all" | "private" | "workspace">("all");
+  const [scopeFilter, setScopeFilter] = useState<
+    "all" | "private" | "workspace"
+  >("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [duplicateSnippet, setDuplicateSnippet] = useState<Snippet | null>(null);
+  const [duplicateSnippet, setDuplicateSnippet] = useState<Snippet | null>(
+    null
+  );
 
-  const { data: snippets = [], isLoading: loading } = useSnippetsQuery(workspace?.id, sortKey);
+  const { data: snippets = [], isLoading: loading } = useSnippetsQuery(
+    workspace?.id,
+    sortKey
+  );
   const { data: tags = [] } = useTagsQuery(workspace?.id);
   const deleteMutation = useSnippetDeleteMutation(workspace?.id, sortKey);
-  const duplicateMutation = useSnippetDuplicateMutation(workspace?.id, sortKey, user?.id);
+  const duplicateMutation = useSnippetDuplicateMutation(
+    workspace?.id,
+    sortKey,
+    user?.id
+  );
 
   const filtered = (snippets as Snippet[]).filter((s) => {
     if (scopeFilter !== "all" && s.shared_scope !== scopeFilter) return false;
-    if (selectedTag && !s.tags?.some((t) => t.name === selectedTag)) return false;
+    if (selectedTag && !s.tags?.some((t) => t.name === selectedTag))
+      return false;
     if (search) {
       const q = search.toLowerCase();
       const matchTitle = s.title.toLowerCase().includes(q);
       const matchShortcut = s.shortcut?.toLowerCase().includes(q);
       const matchBody = s.body.toLowerCase().includes(q);
       const matchTag = s.tags?.some((t) => t.name.toLowerCase().includes(q));
-      if (!matchTitle && !matchShortcut && !matchBody && !matchTag) return false;
+      if (!matchTitle && !matchShortcut && !matchBody && !matchTag)
+        return false;
     }
     return true;
   });
@@ -119,15 +142,20 @@ export default function SnippetsPage() {
 
   const formatDate = (d: string | null) => {
     if (!d) return "—";
-    return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return new Date(d).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Left filter panel */}
       <aside className="w-52 flex-shrink-0 border-r border-border bg-muted/20 p-4 space-y-6 hidden lg:block">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Scope</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Scope
+          </p>
           <div className="space-y-0.5">
             {(["all", "private", "workspace"] as const).map((s) => (
               <button
@@ -139,7 +167,11 @@ export default function SnippetsPage() {
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 }`}
               >
-                {s === "all" ? "All snippets" : s === "private" ? "Private" : "Shared"}
+                {s === "all"
+                  ? "All snippets"
+                  : s === "private"
+                  ? "Private"
+                  : "Shared"}
               </button>
             ))}
           </div>
@@ -147,7 +179,9 @@ export default function SnippetsPage() {
 
         {tags.length > 0 && (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tags</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Tags
+            </p>
             <div className="space-y-0.5">
               <button
                 onClick={() => setSelectedTag(null)}
@@ -162,7 +196,9 @@ export default function SnippetsPage() {
               {tags.map((tag) => (
                 <button
                   key={tag.name}
-                  onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
+                  onClick={() =>
+                    setSelectedTag(selectedTag === tag.name ? null : tag.name)
+                  }
                   className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm flex items-center gap-2 transition-colors ${
                     selectedTag === tag.name
                       ? "bg-accent text-accent-foreground font-medium"
@@ -182,7 +218,7 @@ export default function SnippetsPage() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Top bar */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
           <div className="relative flex-1 max-w-sm">
@@ -233,9 +269,13 @@ export default function SnippetsPage() {
               <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mb-3">
                 <Folder className="w-6 h-6 text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium text-foreground">No snippets found</p>
+              <p className="text-sm font-medium text-foreground">
+                No snippets found
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {search ? "Try a different search term" : "Create your first snippet to get started"}
+                {search
+                  ? "Try a different search term"
+                  : "Create your first snippet to get started"}
               </p>
               {!search && (
                 <Button size="sm" className="mt-4" asChild>
@@ -255,7 +295,9 @@ export default function SnippetsPage() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-sm text-foreground">{snippet.title}</span>
+                      <span className="font-medium text-sm text-foreground">
+                        {snippet.title}
+                      </span>
                       {snippet.shortcut && (
                         <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-muted-foreground">
                           {snippet.shortcut}
@@ -267,10 +309,14 @@ export default function SnippetsPage() {
                         ) : (
                           <Lock className="w-3 h-3" />
                         )}
-                        {snippet.shared_scope === "workspace" ? "Shared" : "Private"}
+                        {snippet.shared_scope === "workspace"
+                          ? "Shared"
+                          : "Private"}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-1">{snippet.body}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-1">
+                      {snippet.body}
+                    </p>
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       {snippet.tags?.map((tag) => (
                         <Badge
@@ -283,7 +329,8 @@ export default function SnippetsPage() {
                         </Badge>
                       ))}
                       <span className="text-xs text-muted-foreground ml-auto">
-                        {snippet.use_count} uses · Last used {formatDate(snippet.last_used_at)}
+                        {snippet.use_count} uses · Last used{" "}
+                        {formatDate(snippet.last_used_at)}
                       </span>
                     </div>
                   </div>
@@ -328,12 +375,16 @@ export default function SnippetsPage() {
         </div>
       </div>
 
-      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(o) => !o && setDeleteId(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete snippet?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The snippet will be permanently deleted.
+              This action cannot be undone. The snippet will be permanently
+              deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -348,17 +399,25 @@ export default function SnippetsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!duplicateSnippet} onOpenChange={(o) => !o && setDuplicateSnippet(null)}>
+      <AlertDialog
+        open={!!duplicateSnippet}
+        onOpenChange={(o) => !o && setDuplicateSnippet(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Duplicate snippet?</AlertDialogTitle>
             <AlertDialogDescription>
-              A copy of &quot;{duplicateSnippet?.title}&quot; will be created. You can edit it afterward.
+              A copy of &quot;{duplicateSnippet?.title}&quot; will be created.
+              You can edit it afterward.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => duplicateSnippet && handleDuplicate(duplicateSnippet)}>
+            <AlertDialogAction
+              onClick={() =>
+                duplicateSnippet && handleDuplicate(duplicateSnippet)
+              }
+            >
               Duplicate
             </AlertDialogAction>
           </AlertDialogFooter>

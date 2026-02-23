@@ -1,4 +1,4 @@
-import { Folder, Tag, Home, Settings, Users, Puzzle } from "lucide-react";
+import { Home, Settings, Users, Puzzle, ChevronDown, Check } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LogOut } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { title: "Snippets", url: "/snippets", icon: Home },
@@ -29,7 +37,7 @@ const settingsItems = [
 ];
 
 export function AppSidebar() {
-  const { workspace } = useWorkspace();
+  const { workspace, workspaces, setActiveWorkspaceId } = useWorkspace();
   const { user, signOut } = useAuth();
 
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "??";
@@ -45,6 +53,29 @@ export function AppSidebar() {
               <p className="text-xs text-muted-foreground truncate">{workspace.name}</p>
             )}
           </div>
+          {workspaces.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {workspaces.map((ws) => (
+                  <DropdownMenuItem
+                    key={ws.id}
+                    className="flex items-center justify-between"
+                    onSelect={() => setActiveWorkspaceId(ws.id)}
+                  >
+                    <span className="truncate">{ws.name}</span>
+                    {workspace?.id === ws.id && <Check className="h-4 w-4 text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </SidebarHeader>
 

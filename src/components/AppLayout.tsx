@@ -13,13 +13,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="h-screen flex w-full bg-background overflow-hidden">
         <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <header className="h-11 flex items-center border-b border-border px-3 flex-shrink-0">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
           </header>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main className="flex-1 flex flex-col min-h-0 overflow-auto">
+            {children}
+          </main>
         </div>
       </div>
     </SidebarProvider>

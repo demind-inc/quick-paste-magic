@@ -34,6 +34,13 @@ async function clearStoredAuth(): Promise<void> {
   await storage.remove("session");
   await storage.remove("apiKey");
   await storage.remove("domainAllowlist");
+  await storage.remove("activeWorkspaceId");
+}
+
+async function clearStoredApiKey(): Promise<void> {
+  await storage.remove("apiKey");
+  await storage.remove("domainAllowlist");
+  await storage.remove("activeWorkspaceId");
 }
 
 const SUPABASE_URL = process.env.PLASMO_PUBLIC_SUPABASE_URL ?? "";
@@ -470,11 +477,18 @@ export default function Popup() {
         const res = await sendMessage<{
           ok?: boolean;
           sessionInvalid?: boolean;
+          invalidApiKey?: boolean;
         }>("SYNC_NOW");
         if (cancelled) return;
         if (res?.sessionInvalid) {
           await clearStoredAuth();
           setSession(null);
+          setApiKey(null);
+          setSnippets([]);
+          return;
+        }
+        if (res?.invalidApiKey) {
+          await clearStoredApiKey();
           setApiKey(null);
           setSnippets([]);
           return;
@@ -521,12 +535,18 @@ export default function Popup() {
     const setRes = await sendMessage<{
       ok?: boolean;
       sessionInvalid?: boolean;
+      invalidApiKey?: boolean;
     }>("SET_SESSION");
     if (setRes?.sessionInvalid) {
       await clearStoredAuth();
       setSession(null);
       setApiKey(null);
       throw new Error("Session invalid. Please sign in again.");
+    }
+    if (setRes?.invalidApiKey) {
+      await clearStoredApiKey();
+      setApiKey(null);
+      throw new Error("Invalid workspace API key for this account.");
     }
   };
 
@@ -540,15 +560,24 @@ export default function Popup() {
   const handleSync = async () => {
     setSnippetsLoading(true);
     try {
-      const res = await sendMessage<{ ok?: boolean; sessionInvalid?: boolean }>(
-        "SYNC_NOW"
-      );
+      const res = await sendMessage<{
+        ok?: boolean;
+        sessionInvalid?: boolean;
+        invalidApiKey?: boolean;
+      }>("SYNC_NOW");
       if (res?.sessionInvalid) {
         await clearStoredAuth();
         setSession(null);
         setApiKey(null);
         setSnippets([]);
         show("Session expired — signed out");
+        return;
+      }
+      if (res?.invalidApiKey) {
+        await clearStoredApiKey();
+        setApiKey(null);
+        setSnippets([]);
+        show("Invalid workspace API key — please reconnect.");
         return;
       }
       await loadSnippets();
