@@ -156,15 +156,14 @@ Deno.serve(async (req) => {
         }
         return Response.json(
           {
-            error:
-              linkError?.message || "Failed to generate invitation link",
+            error: linkError?.message || "Failed to generate invitation link",
           },
           { status: 400, headers: corsHeaders }
         );
       }
       const resendKey = Deno.env.get("RESEND_API_KEY");
       const resendFrom =
-        Deno.env.get("RESEND_FROM") ?? "Invites <onboarding@resend.dev>";
+        Deno.env.get("RESEND_FROM") ?? "SnipDM <snipdm@demind-inc.com>";
       if (resendKey) {
         const actionLink = linkData.properties.action_link as string;
         const res = await fetch("https://api.resend.com/emails", {
@@ -177,7 +176,7 @@ Deno.serve(async (req) => {
             from: resendFrom,
             to: [normalizedEmail],
             subject: "You're invited to join a workspace",
-            html: `You've been invited to join a workspace. <a href="${actionLink}">Accept the invitation</a> (or copy and paste this link: ${actionLink}).`,
+            html: `You've been invited to join a workspace. <a href="${actionLink}">Accept the invitation</a>.`,
           }),
         });
         if (!res.ok) {

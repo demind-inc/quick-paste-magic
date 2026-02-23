@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
 
     const resendKey = Deno.env.get("RESEND_API_KEY");
     const resendFrom =
-      Deno.env.get("RESEND_FROM") ?? "Invites <onboarding@resend.dev>";
+      Deno.env.get("RESEND_FROM") ?? "Invites <snipdm@demind-inc.com>";
     if (resendKey) {
       const actionLink = linkData.properties.action_link as string;
       const res = await fetch("https://api.resend.com/emails", {

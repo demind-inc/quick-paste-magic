@@ -25,6 +25,8 @@ JWT is verified **inside** the function using the [Securing Edge Functions](http
 - **RESEND_API_KEY** – Optional. When set, existing users receive an invite-themed email via [Resend](https://resend.com) instead of the client sending Supabase’s sign-in email.
 - **RESEND_FROM** – Optional. From address for Resend (e.g. `Invites <invites@yourdomain.com>`). Defaults to `Invites <onboarding@resend.dev>`.
 
+  **Resend domain requirement:** With the default `onboarding@resend.dev`, Resend only allows sending to your own verified email. To send invites to any recipient, [verify a domain](https://resend.com/domains) at Resend and set `RESEND_FROM` to an address on that domain (e.g. `Invites <invites@demind-inc.com>`).
+
 Set in dashboard: Project → Edge Functions → invite-workspace-member → Secrets, or:
 
 ```bash
