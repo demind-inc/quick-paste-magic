@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { supabase } from "@/integrations/supabase/client";
 import {
+  useDeleteInvitationMutation,
   useInviteMemberMutation,
   useRemoveMemberMutation,
+  useResendInvitationMutation,
   useUpdateMemberRoleMutation,
   useWorkspaceInvitations,
 } from "@/hooks/useWorkspaceMutations";
@@ -20,7 +23,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { UserPlus, Trash2, RefreshCw } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const roleLabels: Record<string, string> = {
@@ -44,31 +57,118 @@ export default function TeamSettingsPage() {
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
 
   const inviteMutation = useInviteMemberMutation();
+  const resendMutation = useResendInvitationMutation();
+  const deleteInvitationMutation = useDeleteInvitationMutation(workspace?.id);
   const removeMutation = useRemoveMemberMutation(user?.id, workspace?.id);
   const roleMutation = useUpdateMemberRoleMutation(user?.id, workspace?.id);
   const { data: pendingInvitations = [], isLoading: invitationsLoading } =
     useWorkspaceInvitations(workspace?.id);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resendConfirmInv, setResendConfirmInv] = useState<{
+    id: string;
+    email: string;
+  } | null>(null);
 
   const handleInvite = async () => {
     if (!workspace || !user || !inviteEmail.trim()) return;
     try {
-      await inviteMutation.mutateAsync({
+      const result = await inviteMutation.mutateAsync({
         workspaceId: workspace.id,
         email: inviteEmail,
         role: inviteRole,
         invitedBy: user.id,
       });
-      toast({
-        title: "Invitation sent",
-        description: `Invited ${inviteEmail}`,
-      });
       setInviteEmail("");
+      if (result?.existingUser && result?.token) {
+        const redirectTo = `${window.location.origin}/accept-invite?token=${result.token}`;
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: inviteEmail.trim().toLowerCase(),
+          options: { emailRedirectTo: redirectTo },
+        });
+        if (otpError) {
+          toast({
+            title: "Invitation created",
+            description: `Could not send email to ${inviteEmail}. Share this link: ${redirectTo}`,
+            variant: "destructive",
+          });
+          return;
+        }
+        toast({
+          title: "Invitation sent",
+          description: `Invited ${inviteEmail}. They'll receive an email to accept.`,
+        });
+      } else {
+        toast({
+          title: "Invitation sent",
+          description: result?.existingUser
+            ? `Invited ${inviteEmail}. They'll receive an invite email.`
+            : `Invited ${inviteEmail}`,
+        });
+      }
     } catch (err: any) {
       toast({
         title: "Failed to send invitation",
         description: err.message,
         variant: "destructive",
       });
+    }
+  };
+
+  const handleResend = async (inv: { id: string; email: string }) => {
+    if (!workspace) return;
+    setResendingId(inv.id);
+    setResendConfirmInv(null);
+    try {
+      const result = await resendMutation.mutateAsync({
+        invitationId: inv.id,
+        workspaceId: workspace.id,
+      });
+      const email = (result?.email ?? inv.email).trim().toLowerCase();
+      const token = result?.token;
+      if (token) {
+        const redirectTo = `${window.location.origin}/accept-invite?token=${token}`;
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: redirectTo },
+        });
+        if (otpError) {
+          toast({
+            title: "Invitation link ready",
+            description: `Could not send email to ${email}. Share this link: ${redirectTo}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      toast({
+        title: "Invitation resent",
+        description: `Email sent to ${email}. They'll receive an invite to accept.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to resend invitation",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleDeleteInvitation = async (invitationId: string) => {
+    setDeletingId(invitationId);
+    try {
+      await deleteInvitationMutation.mutateAsync(invitationId);
+      toast({ title: "Invitation removed" });
+    } catch (err: any) {
+      toast({
+        title: "Failed to remove invitation",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -213,6 +313,30 @@ export default function TeamSettingsPage() {
                         {new Date(inv.created_at).toLocaleDateString()}
                       </p>
                     </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-muted-foreground hover:text-foreground"
+                        onClick={() => setResendConfirmInv(inv)}
+                        disabled={resendingId === inv.id}
+                        aria-label={`Resend invitation to ${inv.email}`}
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${resendingId === inv.id ? "animate-spin" : ""}`}
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteInvitation(inv.id)}
+                        disabled={deletingId === inv.id}
+                        aria-label={`Remove invitation for ${inv.email}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -220,6 +344,31 @@ export default function TeamSettingsPage() {
           </section>
         </>
       )}
+
+      <AlertDialog
+        open={!!resendConfirmInv}
+        onOpenChange={(open) => !open && setResendConfirmInv(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resend invitation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Send the invitation email again to{" "}
+              {resendConfirmInv?.email ?? ""}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                resendConfirmInv && handleResend(resendConfirmInv)
+              }
+            >
+              Resend
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {isOwner && (
         <>

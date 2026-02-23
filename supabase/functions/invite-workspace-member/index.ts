@@ -66,7 +66,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: invitation, error: insertError } = await supabaseAdmin
+    let invitation: { id: string; token: string };
+    let existingInvitation = false;
+
+    const { data: insertedInvitation, error: insertError } = await supabaseAdmin
       .from("workspace_invitations")
       .insert({
         workspace_id: workspaceId,
@@ -79,35 +82,156 @@ Deno.serve(async (req) => {
 
     if (insertError) {
       if (insertError.code === "23505") {
+        const { data: existing, error: fetchErr } = await supabaseAdmin
+          .from("workspace_invitations")
+          .select("id, token")
+          .eq("workspace_id", workspaceId)
+          .eq("email", normalizedEmail)
+          .is("accepted_at", null)
+          .maybeSingle();
+        if (fetchErr || !existing) {
+          return Response.json(
+            { error: "An invitation for this email already exists" },
+            { status: 409, headers: corsHeaders }
+          );
+        }
+        invitation = existing;
+        existingInvitation = true;
+      } else {
         return Response.json(
-          { error: "An invitation for this email already exists" },
-          { status: 409, headers: corsHeaders }
+          { error: insertError.message },
+          { status: 400, headers: corsHeaders }
         );
       }
-      return Response.json(
-        { error: insertError.message },
-        { status: 400, headers: corsHeaders }
-      );
+    } else {
+      invitation = insertedInvitation!;
     }
 
     const redirectTo = `${siteUrl.replace(/\/$/, "")}/accept-invite?token=${
       invitation.token
     }`;
-    const { error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-        data: {
-          workspace_invitation_id: invitation.id,
-          workspace_id: workspaceId,
-          role: inviteRole,
-        },
-        redirectTo,
-      });
+    const inviteData = {
+      workspace_invitation_id: invitation.id,
+      workspace_id: workspaceId,
+      role: inviteRole,
+    };
 
-    if (inviteError) {
+    const { data: emailExists, error: existsError } = await supabaseAdmin.rpc(
+      "auth_user_exists_by_email",
+      { p_email: normalizedEmail }
+    );
+    if (existsError) {
+      if (!existingInvitation) {
+        await supabaseAdmin
+          .from("workspace_invitations")
+          .delete()
+          .eq("id", invitation.id);
+      }
+      return Response.json(
+        { error: existsError.message || "Failed to check user" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (!existingInvitation) {
       await supabaseAdmin
         .from("workspace_invitations")
-        .delete()
+        .update({ invitee_was_existing_user: emailExists })
         .eq("id", invitation.id);
+    }
+
+    if (emailExists) {
+      const { data: linkData, error: linkError } =
+        await supabaseAdmin.auth.admin.generateLink({
+          type: "magiclink",
+          email: normalizedEmail,
+          options: { redirectTo },
+        });
+      if (linkError || !linkData?.properties?.action_link) {
+        if (!existingInvitation) {
+          await supabaseAdmin
+            .from("workspace_invitations")
+            .delete()
+            .eq("id", invitation.id);
+        }
+        return Response.json(
+          {
+            error:
+              linkError?.message || "Failed to generate invitation link",
+          },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      const resendFrom =
+        Deno.env.get("RESEND_FROM") ?? "Invites <onboarding@resend.dev>";
+      if (resendKey) {
+        const actionLink = linkData.properties.action_link as string;
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resendKey}`,
+          },
+          body: JSON.stringify({
+            from: resendFrom,
+            to: [normalizedEmail],
+            subject: "You're invited to join a workspace",
+            html: `You've been invited to join a workspace. <a href="${actionLink}">Accept the invitation</a> (or copy and paste this link: ${actionLink}).`,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (!existingInvitation) {
+            await supabaseAdmin
+              .from("workspace_invitations")
+              .delete()
+              .eq("id", invitation.id);
+          }
+          return Response.json(
+            {
+              error:
+                (err as { message?: string })?.message ||
+                "Failed to send invitation email",
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+      } else {
+        return Response.json(
+          {
+            ok: true,
+            invitationId: invitation.id,
+            existingUser: true,
+            isNewUser: false,
+            token: invitation.token,
+          },
+          { headers: corsHeaders }
+        );
+      }
+      return Response.json(
+        {
+          ok: true,
+          invitationId: invitation.id,
+          existingUser: true,
+          isNewUser: false,
+        },
+        { headers: corsHeaders }
+      );
+    }
+
+    const { error: inviteError } =
+      await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
+        data: inviteData,
+        redirectTo,
+      });
+    if (inviteError) {
+      if (!existingInvitation) {
+        await supabaseAdmin
+          .from("workspace_invitations")
+          .delete()
+          .eq("id", invitation.id);
+      }
       return Response.json(
         { error: inviteError.message || "Failed to send invitation email" },
         { status: 400, headers: corsHeaders }
@@ -115,7 +239,11 @@ Deno.serve(async (req) => {
     }
 
     return Response.json(
-      { ok: true, invitationId: invitation.id },
+      {
+        ok: true,
+        invitationId: invitation.id,
+        isNewUser: true,
+      },
       { headers: corsHeaders }
     );
   } catch (e) {

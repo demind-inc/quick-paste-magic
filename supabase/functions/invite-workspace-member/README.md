@@ -1,6 +1,9 @@
 # invite-workspace-member
 
-Sends a workspace invitation email via Supabase Auth. Only workspace owners can invite. The invited user receives Supabase’s built-in invite email and is redirected to your app after signing up.
+Sends a workspace invitation email via Supabase Auth. Only workspace owners can invite.
+
+- **New users:** Receive Supabase’s built-in invite email and are redirected to your app after signing up.
+- **Existing users:** If `RESEND_API_KEY` is set, the function generates a magic link and sends an invite-themed email via Resend ("You're invited to join a workspace"). If Resend is not configured, it returns `existingUser: true` and the invitation `token` so the client can fall back to `signInWithOtp` (that sends Supabase’s default sign-in email).
 
 ## Local vs production JWT
 
@@ -19,6 +22,8 @@ JWT is verified **inside** the function using the [Securing Edge Functions](http
 ## Secrets
 
 - **SITE_URL** – Optional. Base URL of your app (e.g. `https://yourapp.com`) for the invite redirect. Defaults to `http://localhost:8080` if unset.
+- **RESEND_API_KEY** – Optional. When set, existing users receive an invite-themed email via [Resend](https://resend.com) instead of the client sending Supabase’s sign-in email.
+- **RESEND_FROM** – Optional. From address for Resend (e.g. `Invites <invites@yourdomain.com>`). Defaults to `Invites <onboarding@resend.dev>`.
 
 Set in dashboard: Project → Edge Functions → invite-workspace-member → Secrets, or:
 

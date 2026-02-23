@@ -79,63 +79,60 @@ Deno.serve(async (req) => {
     const redirectTo = `${siteUrl.replace(/\/$/, "")}/accept-invite?token=${
       invitation.token
     }`;
-    const inviteData = {
-      workspace_invitation_id: invitation.id,
-      workspace_id: invitation.workspace_id,
-      role: invitation.role,
-    };
+    const normalizedEmail = invitation.email.trim().toLowerCase();
 
-    const { error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(invitation.email, {
-        data: inviteData,
-        redirectTo,
+    const { data: linkData, error: linkError } =
+      await supabaseAdmin.auth.admin.generateLink({
+        type: "magiclink",
+        email: normalizedEmail,
+        options: { redirectTo },
       });
-
-    if (inviteError) {
-      const isAlreadyRegistered =
-        /already been registered|already exists|already registered/i.test(
-          inviteError.message ?? ""
-        );
-      if (isAlreadyRegistered) {
-        const { data: linkData, error: linkError } =
-          await supabaseAdmin.auth.admin.generateLink({
-            type: "invite",
-            email: invitation.email,
-            options: {
-              redirectTo,
-              data: inviteData,
-            },
-          });
-        if (linkError) {
-          return Response.json(
-            {
-              error:
-                linkError.message ||
-                "Failed to generate new invitation link",
-            },
-            { status: 400, headers: corsHeaders }
-          );
-        }
-        const actionLink =
-          (linkData as { properties?: { action_link?: string } })?.properties
-            ?.action_link ??
-          (linkData as { action_link?: string })?.action_link;
-        return Response.json(
-          {
-            ok: true,
-            resend: true,
-            actionLink: actionLink ?? undefined,
-          },
-          { headers: corsHeaders }
-        );
-      }
+    if (linkError || !linkData?.properties?.action_link) {
       return Response.json(
-        { error: inviteError.message || "Failed to resend invitation email" },
+        { error: linkError?.message || "Failed to generate invitation link" },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    return Response.json({ ok: true }, { headers: corsHeaders });
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const resendFrom =
+      Deno.env.get("RESEND_FROM") ?? "Invites <onboarding@resend.dev>";
+    if (resendKey) {
+      const actionLink = linkData.properties.action_link as string;
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resendKey}`,
+        },
+        body: JSON.stringify({
+          from: resendFrom,
+          to: [normalizedEmail],
+          subject: "You're invited to join a workspace",
+          html: `You've been invited to join a workspace. <a href="${actionLink}">Accept the invitation</a> (or copy and paste this link: ${actionLink}).`,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return Response.json(
+          {
+            error:
+              (err as { message?: string })?.message ||
+              "Failed to send invitation email",
+          },
+          { status: 400, headers: corsHeaders }
+        );
+      }
+      return Response.json(
+        { ok: true, email: invitation.email },
+        { headers: corsHeaders }
+      );
+    }
+
+    return Response.json(
+      { ok: true, token: invitation.token, email: invitation.email },
+      { headers: corsHeaders }
+    );
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "Internal server error" },

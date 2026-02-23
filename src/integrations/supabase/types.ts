@@ -330,7 +330,15 @@ export type Database = {
     Functions: {
       accept_workspace_invite: {
         Args: { p_token: string }
-        Returns: string
+        Returns: { workspace_id: string; is_new_user: boolean }
+      }
+      auth_user_exists_by_email: {
+        Args: { p_email: string }
+        Returns: boolean
+      }
+      auth_user_has_password: {
+        Args: Record<string, never>
+        Returns: boolean
       }
       get_workspace_invite_email: {
         Args: { p_token: string }

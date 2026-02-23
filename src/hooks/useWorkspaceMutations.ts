@@ -47,8 +47,16 @@ export function useInviteMemberMutation() {
         body: { workspaceId, email: email.trim(), role },
       });
       if (error) throw error;
-      const err = (data as { error?: string })?.error;
-      if (err) throw new Error(err);
+      const payload = data as {
+        error?: string;
+        ok?: boolean;
+        invitationId?: string;
+        existingUser?: boolean;
+        actionLink?: string;
+        token?: string;
+      };
+      if (payload?.error) throw new Error(payload.error);
+      return payload;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
@@ -80,13 +88,38 @@ export function useResendInvitationMutation() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw error;
-      const payload = data as { error?: string; ok?: boolean; actionLink?: string };
+      const payload = data as {
+        error?: string;
+        ok?: boolean;
+        actionLink?: string;
+        existingUser?: boolean;
+        token?: string;
+        email?: string;
+      };
       if (payload?.error) throw new Error(payload.error);
       return payload;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.workspaceInvitations(variables.workspaceId),
+      });
+    },
+  });
+}
+
+export function useDeleteInvitationMutation(workspaceId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const { error } = await supabase
+        .from("workspace_invitations")
+        .delete()
+        .eq("id", invitationId);
+      if (error) throw error;
+    },
+    onSuccess: (_, invitationId) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workspaceInvitations(workspaceId),
       });
     },
   });

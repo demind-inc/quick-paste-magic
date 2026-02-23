@@ -36,6 +36,7 @@ export default function AcceptInvitePage() {
     "idle" | "accepting" | "accepted" | "error" | "done"
   >("idle");
   const [message, setMessage] = useState<string>("");
+  const [isNewUser, setIsNewUser] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [settingPassword, setSettingPassword] = useState(false);
@@ -60,10 +61,13 @@ export default function AcceptInvitePage() {
         setMessage(error.message);
         return;
       }
-      const workspaceId = data as string | null;
+      const result = data as { workspace_id: string; is_new_user: boolean } | null;
+      const workspaceId = result?.workspace_id ?? null;
       if (workspaceId) {
         localStorage.setItem(`activeWorkspace:${user.id}`, workspaceId);
       }
+      const newUser = result?.is_new_user ?? false;
+      setIsNewUser(newUser);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.workspaces(user.id),
       });
@@ -72,6 +76,14 @@ export default function AcceptInvitePage() {
       });
       setStatus("accepted");
       toast({ title: "Workspace joined" });
+      if (newUser) {
+        return;
+      }
+      const { data: hasPassword } = await supabase.rpc("auth_user_has_password");
+      if (hasPassword) {
+        setStatus("done");
+        navigate("/snippets", { replace: true });
+      }
     };
     acceptInvite();
   }, [loading, user, user?.id, token, status, navigate, toast, queryClient]);
@@ -149,7 +161,9 @@ export default function AcceptInvitePage() {
           {status === "accepted" && (
             <div className="space-y-4 pt-2">
               <p className="text-sm text-muted-foreground">
-                Set a password so you can sign in with email and password next time.
+                {isNewUser
+                  ? "Set a password so you can sign in with email next time."
+                  : "Set a password so you can sign in with email and password next time."}
               </p>
               <form onSubmit={handleSetPassword} className="space-y-4">
                 <div className="space-y-1.5">
@@ -177,19 +191,25 @@ export default function AcceptInvitePage() {
                 <div className="flex gap-2">
                   <Button
                     type="submit"
-                    disabled={settingPassword || !password || password !== confirmPassword}
-                    className="flex-1"
+                    disabled={
+                      settingPassword ||
+                      !password ||
+                      password !== confirmPassword
+                    }
+                    className={isNewUser ? "w-full" : "flex-1"}
                   >
                     {settingPassword ? "Setting…" : "Set password"}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={handleSkipPassword}
-                    disabled={settingPassword}
-                  >
-                    Skip
-                  </Button>
+                  {!isNewUser && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleSkipPassword}
+                      disabled={settingPassword}
+                    >
+                      Skip
+                    </Button>
+                  )}
                 </div>
               </form>
             </div>
